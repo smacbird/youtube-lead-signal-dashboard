@@ -9,6 +9,9 @@ type Status = 'all' | LocalStatus;
 type ScoreBand = 'all' | 'urgent' | 'high' | 'medium' | 'low';
 type DraftStyle = 'helpful_consultative' | 'concise_resource' | 'content_follow_up' | 'risk_aware_decline';
 type OpportunityType = 'all' | 'affiliate_publisher_opportunity' | 'consumer_buyer_question' | 'low_fit_comment';
+type WorkTab = 'hot' | 'buyer' | 'publisher' | 'content' | 'low_fit' | 'stale' | 'done';
+type NicheProfile = 'affiliate_marketing' | 'money_making' | 'work_from_home' | 'custom';
+type FreshnessWindow = '7' | '14' | '30' | 'all';
 
 type ScoreDimension = {
   dimension: string;
@@ -93,6 +96,23 @@ const opportunityTypeLabels: Record<OpportunityType, string> = {
   low_fit_comment: 'Low fit',
 };
 
+const workTabLabels: Record<WorkTab, string> = {
+  hot: 'Hot leads',
+  buyer: 'Buyer questions',
+  publisher: 'Publisher problems',
+  content: 'Content ideas',
+  low_fit: 'Low fit',
+  stale: 'Stale',
+  done: 'Done',
+};
+
+const nicheProfileLabels: Record<NicheProfile, string> = {
+  affiliate_marketing: 'Affiliate marketing',
+  money_making: 'Money-making opportunities',
+  work_from_home: 'Work at home',
+  custom: 'Custom / later',
+};
+
 const dimensionLabels: Record<string, string> = {
   affiliatePublisherSignal: 'Affiliate publisher signal',
   publisherRevenuePain: 'Publisher revenue pain',
@@ -138,6 +158,63 @@ function safeTopic(item: ScoredFixture) {
 
 function selectedOffer(item: ScoredFixture) {
   return item.score.detectedOfferFit[0] ? formatOffer(item.score.detectedOfferFit[0]) : safeTopic(item);
+}
+
+function commentAgeDays(item: ScoredFixture) {
+  const published = new Date(item.comment.publishedAt).getTime();
+  if (!Number.isFinite(published)) return null;
+  return Math.max(0, Math.floor((Date.now() - published) / 86400000));
+}
+
+function ageLabel(item: ScoredFixture) {
+  const days = commentAgeDays(item);
+  if (days === null) return 'age unknown';
+  if (days === 0) return 'today';
+  if (days === 1) return '1 day old';
+  if (days < 30) return `${days} days old`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? '1 month old' : `${months} months old`;
+}
+
+function isFreshForWindow(item: ScoredFixture, windowDays: FreshnessWindow) {
+  if (windowDays === 'all') return true;
+  const days = commentAgeDays(item);
+  if (days === null) return false;
+  return days <= Number(windowDays);
+}
+
+function whyThisMatters(item: ScoredFixture) {
+  if (item.score.opportunityType === 'affiliate_publisher_opportunity') {
+    return 'This looks like a publisher/creator monetization problem: the commenter is asking about affiliate links, websites, commissions, tracking, or how to turn traffic into revenue.';
+  }
+  if (item.score.opportunityType === 'consumer_buyer_question') {
+    return 'This looks like buyer intent: the commenter is trying to choose a product, compare options, or decide what is worth buying.';
+  }
+  return 'This comment is probably lower fit for manual outreach, but it may still be useful as a content or audience research signal.';
+}
+
+function nextBestAction(item: ScoredFixture) {
+  const days = commentAgeDays(item);
+  if (days !== null && days > 14) return 'Save for research; avoid replying unless still active';
+  if (item.score.riskLevel === 'high' || item.score.recommendedAction === 'reject_as_spam') return 'Ignore or use caution';
+  if (item.score.overallScore >= 68 && item.score.opportunityType !== 'low_fit_comment') return 'Review and draft reply';
+  if (item.score.opportunityType === 'consumer_buyer_question') return 'Save as buyer/content idea';
+  if (item.score.opportunityType === 'affiliate_publisher_opportunity') return 'Review publisher problem';
+  return 'Ignore for now';
+}
+
+function copyBundleText(item: ScoredFixture, draftText?: string) {
+  return [
+    `Opportunity: ${item.score.opportunityTypeLabel}`,
+    `Score: ${item.score.overallScore} (${item.score.priority})`,
+    `Next action: ${nextBestAction(item)}`,
+    `Why this matters: ${whyThisMatters(item)}`,
+    `Video: ${item.video.title}`,
+    `Commenter: ${item.comment.authorDisplayName}`,
+    `Comment: ${item.comment.textOriginal}`,
+    `Comment URL: ${makeYouTubeCommentUrl(item)}`,
+    draftText ? `Draft reply: ${draftText}` : '',
+  ].filter(Boolean).join('\n\n');
 }
 
 function draftForStyle(item: ScoredFixture, style: DraftStyle): ReplyDraft {
@@ -273,6 +350,12 @@ function SourceActions({ item, draftText, onMarkReplied }: { item: ScoredFixture
     window.setTimeout(() => setCopied(false), 1800);
   }
 
+  async function copyBundle() {
+    await navigator.clipboard.writeText(copyBundleText(item, draftText));
+    setCopiedUrl('review bundle');
+    window.setTimeout(() => setCopiedUrl(null), 1800);
+  }
+
   async function copyUrl(label: string, url: string) {
     await navigator.clipboard.writeText(url);
     setCopiedUrl(label);
@@ -308,6 +391,9 @@ function SourceActions({ item, draftText, onMarkReplied }: { item: ScoredFixture
         </button>
         <button className="source-button" type="button" onClick={copyDraft} disabled={!draftText}>
           {copied ? 'Copied draft' : 'Copy draft reply'}
+        </button>
+        <button className="source-button" type="button" onClick={copyBundle}>
+          Copy review bundle
         </button>
         <button className="source-button mock" type="button" onClick={onMarkReplied}>
           Mark replied manually
@@ -374,6 +460,7 @@ function OpportunityCard({ item, localStatus, selected, onSelect }: { item: Scor
       </div>
       <div className="card-tags">
         <StatusBadge status={localStatus} />
+        <span>{ageLabel(item)}</span>
         <span>{opportunityTypeLabels[item.score.opportunityType]}</span>
         <span>{item.score.recommendedAction.replaceAll('_', ' ')}</span>
       </div>
@@ -485,8 +572,16 @@ function DetailPanel({
       <section className="detail-section source-context">
         <h3>Source context</h3>
         <p><strong>{item.video.title}</strong></p>
-        <p>{item.video.channelName} · {new Date(item.comment.publishedAt).toLocaleDateString()} · {item.comment.likeCount} likes · {item.comment.replyCount} replies</p>
+        <p>{item.video.channelName} · {new Date(item.comment.publishedAt).toLocaleDateString()} · {ageLabel(item)} · {item.comment.likeCount} likes · {item.comment.replyCount} replies</p>
         <blockquote>{item.comment.textOriginal}</blockquote>
+      </section>
+
+      <section className="detail-section insight-box">
+        <div className="section-heading-row">
+          <h3>Why this matters</h3>
+          <span>{nextBestAction(item)}</span>
+        </div>
+        <p>{whyThisMatters(item)}</p>
       </section>
 
       <SourceActions item={item} draftText={selectedDraft?.body} onMarkReplied={() => onTransition('replied')} />
@@ -678,7 +773,7 @@ function ImportPanel({ onImported }: { onImported: (items: ScoredFixture[], mess
   const [maxPages, setMaxPages] = useState(1);
   const [maxCommentsPerVideo, setMaxCommentsPerVideo] = useState(100);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('Read-only import is disabled until the backend is running with YOUTUBE_API_KEY.');
+  const [message, setMessage] = useState('Start by importing real YouTube comments, or load any persisted queue from prior imports.');
 
   async function loadPersisted() {
     setLoading(true);
@@ -746,6 +841,9 @@ function App() {
   const [scoreBand, setScoreBand] = useState<ScoreBand>('all');
   const [niche, setNiche] = useState('all');
   const [opportunityType, setOpportunityType] = useState<OpportunityType>('all');
+  const [workTab, setWorkTab] = useState<WorkTab>('hot');
+  const [nicheProfile, setNicheProfile] = useState<NicheProfile>('affiliate_marketing');
+  const [freshnessWindow, setFreshnessWindow] = useState<FreshnessWindow>('14');
   const [localStatuses, setLocalStatuses] = useState<Record<string, LocalStatus>>(() => Object.fromEntries(allItems.map((item) => [item.id, item.opportunity.status])));
   const [selectedDrafts, setSelectedDrafts] = useState<Record<string, string>>({});
   const detailRef = React.useRef<HTMLElement | null>(null);
@@ -757,8 +855,24 @@ function App() {
     const scoreMatch = scoreBand === 'all' || getScoreBand(item.score.overallScore) === scoreBand;
     const nicheMatch = niche === 'all' || item.video.topic === niche;
     const typeMatch = opportunityType === 'all' || item.score.opportunityType === opportunityType;
-    return statusMatch && scoreMatch && nicheMatch && typeMatch;
-  }), [allItems, localStatuses, status, scoreBand, niche, opportunityType]);
+    const done = ['replied', 'rejected'].includes(localStatus);
+    const fresh = isFreshForWindow(item, freshnessWindow);
+    const stale = !isFreshForWindow(item, '14');
+    const tabMatch = workTab === 'hot'
+      ? !done && fresh && item.score.overallScore >= 45 && item.score.opportunityType !== 'low_fit_comment'
+      : workTab === 'buyer'
+        ? !done && fresh && item.score.opportunityType === 'consumer_buyer_question'
+        : workTab === 'publisher'
+          ? !done && fresh && item.score.opportunityType === 'affiliate_publisher_opportunity'
+          : workTab === 'content'
+            ? !done && fresh && (item.score.detectedOfferFit.length > 0 || item.score.evidenceSnippets.length > 0)
+            : workTab === 'low_fit'
+              ? !done && fresh && item.score.opportunityType === 'low_fit_comment'
+              : workTab === 'stale'
+                ? !done && stale
+                : done;
+    return statusMatch && scoreMatch && nicheMatch && typeMatch && tabMatch;
+  }), [allItems, localStatuses, status, scoreBand, niche, opportunityType, workTab, freshnessWindow]);
 
   const selectedItem = filteredItems.find((item) => item.id === selectedId) ?? filteredItems[0] ?? allItems[0];
   function selectOpportunity(id: string) {
@@ -802,7 +916,7 @@ function App() {
           <p>Rank affiliate publisher opportunities and consumer buyer questions, inspect the evidence, select safe reply drafts, and move each item through Steve’s manual approval workflow.</p>
         </div>
         <div className="stats-row">
-          <StatCard label="Comments scored" value={allItems.length} note="sample data" />
+          <StatCard label="Comments scored" value={allItems.length} note={dataSource === 'fixtures' ? 'sample data' : 'live/imported'} />
           <StatCard label="Top signals" value={stats.urgent} note="score + low risk" />
           <StatCard label="Consumer questions" value={stats.consumerQuestions} note="buyer decisions" />
           <StatCard label="Safe reply paths" value={stats.safeReplies} note="draft-ready" />
@@ -811,7 +925,7 @@ function App() {
       </section>
 
       <section className="boundary-strip" aria-label="MVP safety boundary">
-        <strong>Safety boundary:</strong> every approval action is local/in-memory. The app now labels affiliate publisher opportunities separately from consumer buyer questions; it never sends a reply, calls YouTube, or contacts an external service.
+        <strong>Safety boundary:</strong> every approval action is local/in-memory. The app now labels affiliate publisher opportunities separately from consumer buyer questions; it prioritizes fresh comments for manual review and never sends a reply, calls YouTube write endpoints, or contacts an external service.
       </section>
 
       <ImportPanel onImported={(items, message) => {
@@ -821,6 +935,35 @@ function App() {
         if (items[0]) setSelectedId(items[0].id);
         console.info(message);
       }} />
+
+      <section className="filters niche-profile-filters" aria-label="Niche profile selector">
+        <div>
+          <span>Niche profile</span>
+          {(['affiliate_marketing', 'money_making', 'work_from_home', 'custom'] as NicheProfile[]).map((value) => (
+            <FilterButton key={value} active={nicheProfile === value} value={value} label={nicheProfileLabels[value]} onClick={setNicheProfile} />
+          ))}
+        </div>
+        <small className="workflow-note">Current scoring is tuned for affiliate marketing. These profile buttons are ready for niche-specific rules as we define the list.</small>
+      </section>
+
+      <section className="filters work-tabs" aria-label="Review inbox tabs">
+        <div>
+          <span>Review inbox</span>
+          {(['hot', 'buyer', 'publisher', 'content', 'low_fit', 'stale', 'done'] as WorkTab[]).map((value) => (
+            <FilterButton key={value} active={workTab === value} value={value} label={workTabLabels[value]} onClick={setWorkTab} />
+          ))}
+        </div>
+      </section>
+
+      <section className="filters freshness-filters" aria-label="Comment freshness filters">
+        <div>
+          <span>Freshness window</span>
+          {(['7', '14', '30', 'all'] as FreshnessWindow[]).map((value) => (
+            <FilterButton key={value} active={freshnessWindow === value} value={value} label={value === 'all' ? 'All ages' : `Last ${value} days`} onClick={setFreshnessWindow} />
+          ))}
+        </div>
+        <small className="workflow-note">Default is 14 days. Older comments are better for research/content ideas than direct replies unless the thread is still active.</small>
+      </section>
 
       <section className="filters data-source-filters" aria-label="Data source filters">
         <div>
@@ -875,7 +1018,7 @@ function App() {
               selected={selectedItem.id === item.id}
               onSelect={() => selectOpportunity(item.id)}
             />
-          )) : <p className="empty-state">No opportunities match these filters.</p>}
+          )) : <p className="empty-state">No opportunities match this inbox/filter combo. Try Hot leads, load imported data, or loosen the score/type filters.</p>}
         </div>
         {selectedItem && (
           <section ref={detailRef}>

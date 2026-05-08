@@ -481,3 +481,21 @@ meter { width: 100%; height: 10px; margin: 10px 0; }
   color: #bfdbfe;
   overflow-wrap: anywhere;
 }
+
+.insight-box {
+  border-color: rgba(56, 189, 248, 0.35);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(15, 23, 42, 0.86));
+}
+
+.insight-box .section-heading-row span {
+  color: #fde68a;
+  border: 1px solid rgba(253, 230, 138, 0.35);
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.work-tabs .chip.active,
+.niche-profile-filters .chip.active {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
+}
