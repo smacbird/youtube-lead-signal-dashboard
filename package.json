@@ -1,0 +1,24 @@
+{
+  "name": "youtube-lead-signal-dashboard-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "check:scoring": "node scripts/check-scoring.mjs",
+    "dev:server": "node server/server.js",
+    "check:import": "node scripts/check-import.mjs",
+    "start": "node server/server.js"
+  },
+  "dependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "typescript": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  }
+}
