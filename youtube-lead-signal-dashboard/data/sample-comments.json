@@ -1,0 +1,1604 @@
+{
+  "schemaVersion": "0.3.0",
+  "generatedAt": "2026-05-07T16:45:00.000Z",
+  "source": "fixture-only-affiliate-and-consumer-youtube-comments",
+  "notes": [
+    "Affiliate publisher/site-owner sample data and consumer product-decision question sample data.",
+    "General local service/CRM/paid-ads lead-gen comments are excluded unless explicitly tied to affiliate publishing or consumer buyer decisions.",
+    "All replies are drafts for Steve approval; no external posting is allowed in the MVP.",
+    "Fixture YouTube IDs and URLs are fake/safe and must not be fetched."
+  ],
+  "items": [
+    {
+      "id": "sample_001",
+      "video": {
+        "id": "vid_affiliate_001",
+        "youtubeVideoId": "yt_FIX_aff001",
+        "title": "Affiliate Funnels That Do Not Feel Spammy",
+        "channelName": "Partner Revenue Notes",
+        "publishedAt": "2026-05-01T12:00:00.000Z",
+        "topic": "affiliate_marketing",
+        "offerFit": [
+          "affiliate_funnel"
+        ],
+        "url": "https://youtube.example/watch?v=yt_FIX_aff001",
+        "sourceType": "fixture"
+      },
+      "comment": {
+        "id": "com_001",
+        "videoId": "vid_affiliate_001",
+        "youtubeCommentId": "ytc_FIX_aff001",
+        "authorDisplayName": "Nate Reviews Gear",
+        "authorChannelId": "chan_FIX_aff001",
+        "textOriginal": "I have 70 comparison posts getting traffic but almost no email signups. People click Amazon and disappear. What would you add before the affiliate click without annoying readers?",
+        "publishedAt": "2026-05-02T12:00:00.000Z",
+        "likeCount": 31,
+        "replyCount": 7,
+        "isChannelOwner": false,
+        "language": "en",
+        "signals": [
+          "affiliate",
+          "revenue_pain",
+          "funnel_leak",
+          "buyer_intent_affiliate",
+          "replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_001",
+        "commentId": "com_001",
+        "status": "new",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Affiliate publisher fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "affiliate_funnel"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_001_a",
+            "opportunityId": "opp_001",
+            "style": "helpful_consultative",
+            "body": "A good first test is a buyer checklist before the comparison table: useful enough to save, but not a generic newsletter gate. Track opt-in rate and affiliate CTR together.",
+            "complianceNotes": [
+              "Affiliate disclosure/trust safe wording",
+              "No earnings guarantees",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_001",
+            "opportunityId": "opp_001",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Affiliate-only sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z",
+        "opportunityType": "affiliate_publisher_opportunity",
+        "opportunityTypeLabel": "Affiliate publisher opportunity",
+        "sourceType": "youtube_comment"
+      }
+    },
+    {
+      "id": "sample_002",
+      "video": {
+        "id": "vid_affiliate_002",
+        "youtubeVideoId": "yt_FIX_aff002",
+        "title": "Niche Site Monetization Beyond Display Ads",
+        "channelName": "Publisher Benchmarks",
+        "publishedAt": "2026-05-01T12:00:00.000Z",
+        "topic": "affiliate_marketing",
+        "offerFit": [
+          "affiliate_tracking"
+        ],
+        "url": "https://youtube.example/watch?v=yt_FIX_aff002",
+        "sourceType": "fixture"
+      },
+      "comment": {
+        "id": "com_002",
+        "videoId": "vid_affiliate_002",
+        "youtubeCommentId": "ytc_FIX_aff002",
+        "authorDisplayName": "Garden Tool Guide",
+        "authorChannelId": "chan_FIX_aff002",
+        "textOriginal": "Do you have a template for tracking revenue by article? GA4 plus Amazon reports are a mess and I cannot tell which posts deserve updates.",
+        "publishedAt": "2026-05-02T12:00:00.000Z",
+        "likeCount": 15,
+        "replyCount": 2,
+        "isChannelOwner": false,
+        "language": "en",
+        "signals": [
+          "affiliate",
+          "buyer_intent_affiliate",
+          "template_request",
+          "content_opportunity",
+          "replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_002",
+        "commentId": "com_002",
+        "status": "new",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Affiliate publisher fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "affiliate_tracking"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_002_a",
+            "opportunityId": "opp_002",
+            "style": "helpful_consultative",
+            "body": "Start with URL, product/program, clicks, commission, conversion proxy, last updated date, and next action. The goal is article-level decisions, not trusting one dashboard alone.",
+            "complianceNotes": [
+              "Affiliate disclosure/trust safe wording",
+              "No earnings guarantees",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_002",
+            "opportunityId": "opp_002",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Affiliate-only sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z",
+        "opportunityType": "affiliate_publisher_opportunity",
+        "opportunityTypeLabel": "Affiliate publisher opportunity",
+        "sourceType": "youtube_comment"
+      }
+    },
+    {
+      "id": "sample_003",
+      "video": {
+        "id": "vid_affiliate_003",
+        "youtubeVideoId": "yt_FIX_aff003",
+        "title": "Build Comparison Pages People Trust",
+        "channelName": "Helpful Marketing",
+        "publishedAt": "2026-05-01T12:00:00.000Z",
+        "topic": "affiliate_marketing",
+        "offerFit": [
+          "content_strategy"
+        ],
+        "url": "https://youtube.example/watch?v=yt_FIX_aff003",
+        "sourceType": "fixture"
+      },
+      "comment": {
+        "id": "com_003",
+        "videoId": "vid_affiliate_003",
+        "youtubeCommentId": "ytc_FIX_aff003",
+        "authorDisplayName": "SaaS Reviews Lead",
+        "authorChannelId": "chan_FIX_aff003",
+        "textOriginal": "We rank for best CRM for consultants but the page is old and vendors changed pricing. Should we update the whole post or create separate comparison pages?",
+        "publishedAt": "2026-05-02T12:00:00.000Z",
+        "likeCount": 21,
+        "replyCount": 4,
+        "isChannelOwner": false,
+        "language": "en",
+        "signals": [
+          "affiliate",
+          "revenue_pain",
+          "buyer_intent_affiliate",
+          "content_opportunity",
+          "replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_003",
+        "commentId": "com_003",
+        "status": "new",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Affiliate publisher fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "content_strategy"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_003_a",
+            "opportunityId": "opp_003",
+            "style": "helpful_consultative",
+            "body": "If the intent is still one broad decision, update the main post first: pricing, criteria, screenshots, and who each CRM is best for. Split only when each comparison has unique intent.",
+            "complianceNotes": [
+              "Affiliate disclosure/trust safe wording",
+              "No earnings guarantees",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_003",
+            "opportunityId": "opp_003",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Affiliate-only sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z",
+        "opportunityType": "affiliate_publisher_opportunity",
+        "opportunityTypeLabel": "Affiliate publisher opportunity",
+        "sourceType": "youtube_comment"
+      }
+    },
+    {
+      "id": "sample_004",
+      "video": {
+        "id": "vid_affiliate_004",
+        "youtubeVideoId": "yt_FIX_aff004",
+        "title": "Affiliate Disclosure and Trust Basics",
+        "channelName": "Publisher Ethics",
+        "publishedAt": "2026-05-01T12:00:00.000Z",
+        "topic": "affiliate_marketing",
+        "offerFit": [
+          "disclosure_trust"
+        ],
+        "url": "https://youtube.example/watch?v=yt_FIX_aff004",
+        "sourceType": "fixture"
+      },
+      "comment": {
+        "id": "com_004",
+        "videoId": "vid_affiliate_004",
+        "youtubeCommentId": "ytc_FIX_aff004",
+        "authorDisplayName": "Coupon Site Owner",
+        "authorChannelId": "chan_FIX_aff004",
+        "textOriginal": "If I hide my affiliate disclosure until the footer, conversions go up. Everyone does it. Is there a safer way to keep CTR high without scaring people off?",
+        "publishedAt": "2026-05-02T12:00:00.000Z",
+        "likeCount": 6,
+        "replyCount": 3,
+        "isChannelOwner": false,
+        "language": "en",
+        "signals": [
+          "affiliate",
+          "compliance_risk",
+          "buyer_intent_affiliate",
+          "replyable_with_caution"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_004",
+        "commentId": "com_004",
+        "status": "new",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Affiliate publisher fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "disclosure_trust"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_004_a",
+            "opportunityId": "opp_004",
+            "style": "risk_aware_decline",
+            "body": "I would not hide the disclosure. Test plain-language wording that is clear but not scary, then make the recommendation useful and evidence-based.",
+            "complianceNotes": [
+              "Affiliate disclosure/trust safe wording",
+              "No earnings guarantees",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_004",
+            "opportunityId": "opp_004",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Affiliate-only sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z",
+        "opportunityType": "affiliate_publisher_opportunity",
+        "opportunityTypeLabel": "Affiliate publisher opportunity",
+        "sourceType": "youtube_comment"
+      }
+    },
+    {
+      "id": "sample_005",
+      "video": {
+        "id": "vid_affiliate_005",
+        "youtubeVideoId": "yt_FIX_aff005",
+        "title": "Build a Resource Hub Around Buyer Questions",
+        "channelName": "Niche Builder School",
+        "publishedAt": "2026-05-01T12:00:00.000Z",
+        "topic": "affiliate_marketing",
+        "offerFit": [
+          "product_selector"
+        ],
+        "url": "https://youtube.example/watch?v=yt_FIX_aff005",
+        "sourceType": "fixture"
+      },
+      "comment": {
+        "id": "com_005",
+        "videoId": "vid_affiliate_005",
+        "youtubeCommentId": "ytc_FIX_aff005",
+        "authorDisplayName": "Camera Blog Editor",
+        "authorChannelId": "chan_FIX_aff005",
+        "textOriginal": "We keep getting the same comment: which camera should I buy for indoor YouTube videos under $700? Would you build a calculator, a quiz, or just another article?",
+        "publishedAt": "2026-05-02T12:00:00.000Z",
+        "likeCount": 33,
+        "replyCount": 10,
+        "isChannelOwner": false,
+        "language": "en",
+        "signals": [
+          "affiliate",
+          "content_opportunity",
+          "buyer_intent_affiliate",
+          "replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_005",
+        "commentId": "com_005",
+        "status": "new",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Affiliate publisher fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "product_selector"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_005_a",
+            "opportunityId": "opp_005",
+            "style": "helpful_consultative",
+            "body": "For that repeated question, I would build a short quiz or selector first, then support it with an article. Ask budget, room size, lighting, and autofocus needs.",
+            "complianceNotes": [
+              "Affiliate disclosure/trust safe wording",
+              "No earnings guarantees",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_005",
+            "opportunityId": "opp_005",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Affiliate-only sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z",
+        "opportunityType": "affiliate_publisher_opportunity",
+        "opportunityTypeLabel": "Affiliate publisher opportunity",
+        "sourceType": "youtube_comment"
+      }
+    },
+    {
+      "id": "sample_006",
+      "video": {
+        "id": "vid_affiliate_006",
+        "youtubeVideoId": "yt_FIX_aff006",
+        "title": "How to Choose an Affiliate Niche",
+        "channelName": "Niche Builder School",
+        "publishedAt": "2026-05-01T12:00:00.000Z",
+        "topic": "affiliate_marketing",
+        "offerFit": [
+          "niche_research"
+        ],
+        "url": "https://youtube.example/watch?v=yt_FIX_aff006",
+        "sourceType": "fixture"
+      },
+      "comment": {
+        "id": "com_006",
+        "videoId": "vid_affiliate_006",
+        "youtubeCommentId": "ytc_FIX_aff006",
+        "authorDisplayName": "New Niche Builder",
+        "authorChannelId": "chan_FIX_aff006",
+        "textOriginal": "I am stuck choosing between pet gear and home office products. Both have Amazon volume but commissions look low. How would you pick the better affiliate niche?",
+        "publishedAt": "2026-05-02T12:00:00.000Z",
+        "likeCount": 12,
+        "replyCount": 5,
+        "isChannelOwner": false,
+        "language": "en",
+        "signals": [
+          "affiliate",
+          "buyer_intent_affiliate",
+          "niche_research",
+          "replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_006",
+        "commentId": "com_006",
+        "status": "new",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Affiliate publisher fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "niche_research"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_006_a",
+            "opportunityId": "opp_006",
+            "style": "helpful_consultative",
+            "body": "Compare commission potential, content difficulty, repeat purchase behavior, product price, and whether you can add a lead magnet or email angle beyond Amazon.",
+            "complianceNotes": [
+              "Affiliate disclosure/trust safe wording",
+              "No earnings guarantees",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_006",
+            "opportunityId": "opp_006",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Affiliate-only sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z",
+        "opportunityType": "affiliate_publisher_opportunity",
+        "opportunityTypeLabel": "Affiliate publisher opportunity",
+        "sourceType": "youtube_comment"
+      }
+    },
+    {
+      "id": "sample_007",
+      "video": {
+        "id": "vid_affiliate_007",
+        "youtubeVideoId": "yt_FIX_aff007",
+        "title": "Review Content That Actually Helps Buyers",
+        "channelName": "Partner Revenue Notes",
+        "publishedAt": "2026-05-01T12:00:00.000Z",
+        "topic": "affiliate_marketing",
+        "offerFit": [
+          "content_strategy"
+        ],
+        "url": "https://youtube.example/watch?v=yt_FIX_aff007",
+        "sourceType": "fixture"
+      },
+      "comment": {
+        "id": "com_007",
+        "videoId": "vid_affiliate_007",
+        "youtubeCommentId": "ytc_FIX_aff007",
+        "authorDisplayName": "Angry Viewer",
+        "authorChannelId": "chan_FIX_aff007",
+        "textOriginal": "Affiliate sites are all garbage now. Every review is fake and you people ruined search results.",
+        "publishedAt": "2026-05-02T12:00:00.000Z",
+        "likeCount": 7,
+        "replyCount": 11,
+        "isChannelOwner": false,
+        "language": "en",
+        "signals": [
+          "affiliate",
+          "hostile",
+          "low_replyability",
+          "content_opportunity"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_007",
+        "commentId": "com_007",
+        "status": "new",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Affiliate publisher fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "content_strategy"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_007_a",
+            "opportunityId": "opp_007",
+            "style": "risk_aware_decline",
+            "body": "That frustration is fair. A useful review should show real criteria, tradeoffs, and who should not buy the product. Thin comparison pages are what good publishers need to move away from.",
+            "complianceNotes": [
+              "Affiliate disclosure/trust safe wording",
+              "No earnings guarantees",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_007",
+            "opportunityId": "opp_007",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Affiliate-only sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z",
+        "opportunityType": "affiliate_publisher_opportunity",
+        "opportunityTypeLabel": "Affiliate publisher opportunity",
+        "sourceType": "youtube_comment"
+      }
+    },
+    {
+      "id": "sample_008",
+      "video": {
+        "id": "vid_affiliate_008",
+        "youtubeVideoId": "yt_FIX_aff008",
+        "title": "Affiliate Tracking Without Losing Your Mind",
+        "channelName": "Publisher Analytics Lab",
+        "publishedAt": "2026-05-01T12:00:00.000Z",
+        "topic": "affiliate_marketing",
+        "offerFit": [
+          "affiliate_tracking"
+        ],
+        "url": "https://youtube.example/watch?v=yt_FIX_aff008",
+        "sourceType": "fixture"
+      },
+      "comment": {
+        "id": "com_008",
+        "videoId": "vid_affiliate_008",
+        "youtubeCommentId": "ytc_FIX_aff008",
+        "authorDisplayName": "Impact User 42",
+        "authorChannelId": "chan_FIX_aff008",
+        "textOriginal": "Impact shows 300 clicks but the merchant dashboard says 11 sales and GA4 says almost nothing. How do you reconcile affiliate tracking without wasting a week?",
+        "publishedAt": "2026-05-02T12:00:00.000Z",
+        "likeCount": 18,
+        "replyCount": 6,
+        "isChannelOwner": false,
+        "language": "en",
+        "signals": [
+          "affiliate",
+          "revenue_pain",
+          "buyer_intent_affiliate",
+          "replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_008",
+        "commentId": "com_008",
+        "status": "new",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Affiliate publisher fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "affiliate_tracking"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_008_a",
+            "opportunityId": "opp_008",
+            "style": "helpful_consultative",
+            "body": "Create one source-of-truth sheet by URL and program, then compare trends instead of expecting perfect one-to-one attribution. Flag big mismatches for merchant follow-up.",
+            "complianceNotes": [
+              "Affiliate disclosure/trust safe wording",
+              "No earnings guarantees",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_008",
+            "opportunityId": "opp_008",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Affiliate-only sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z",
+        "opportunityType": "affiliate_publisher_opportunity",
+        "opportunityTypeLabel": "Affiliate publisher opportunity",
+        "sourceType": "youtube_comment"
+      }
+    },
+    {
+      "id": "sample_009",
+      "video": {
+        "id": "vid_affiliate_009",
+        "youtubeVideoId": "yt_FIX_aff009",
+        "title": "Turn Buyer Guides Into Email Subscribers",
+        "channelName": "Creator Funnel Studio",
+        "publishedAt": "2026-05-01T12:00:00.000Z",
+        "topic": "affiliate_marketing",
+        "offerFit": [
+          "lead_magnet"
+        ],
+        "url": "https://youtube.example/watch?v=yt_FIX_aff009",
+        "sourceType": "fixture"
+      },
+      "comment": {
+        "id": "com_009",
+        "videoId": "vid_affiliate_009",
+        "youtubeCommentId": "ytc_FIX_aff009",
+        "authorDisplayName": "Outdoor Blog Owner",
+        "authorChannelId": "chan_FIX_aff009",
+        "textOriginal": "My best hiking boots guide gets traffic, but the only CTA is Amazon buttons. What lead magnet would make sense without slowing buyers down?",
+        "publishedAt": "2026-05-02T12:00:00.000Z",
+        "likeCount": 24,
+        "replyCount": 5,
+        "isChannelOwner": false,
+        "language": "en",
+        "signals": [
+          "affiliate",
+          "revenue_pain",
+          "funnel_leak",
+          "buyer_intent_affiliate",
+          "replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_009",
+        "commentId": "com_009",
+        "status": "new",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Affiliate publisher fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "lead_magnet"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_009_a",
+            "opportunityId": "opp_009",
+            "style": "helpful_consultative",
+            "body": "A boot-fit checklist or terrain selector could work because it helps the purchase decision. Keep it optional and measure whether it lifts email capture without hurting clicks.",
+            "complianceNotes": [
+              "Affiliate disclosure/trust safe wording",
+              "No earnings guarantees",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_009",
+            "opportunityId": "opp_009",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Affiliate-only sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z",
+        "opportunityType": "affiliate_publisher_opportunity",
+        "opportunityTypeLabel": "Affiliate publisher opportunity",
+        "sourceType": "youtube_comment"
+      }
+    },
+    {
+      "id": "sample_010",
+      "video": {
+        "id": "vid_affiliate_010",
+        "youtubeVideoId": "yt_FIX_aff010",
+        "title": "Update Old Affiliate Content",
+        "channelName": "Niche Site Fixes",
+        "publishedAt": "2026-05-01T12:00:00.000Z",
+        "topic": "affiliate_marketing",
+        "offerFit": [
+          "content_strategy"
+        ],
+        "url": "https://youtube.example/watch?v=yt_FIX_aff010",
+        "sourceType": "fixture"
+      },
+      "comment": {
+        "id": "com_010",
+        "videoId": "vid_affiliate_010",
+        "youtubeCommentId": "ytc_FIX_aff010",
+        "authorDisplayName": "Home Gym Reviewer",
+        "authorChannelId": "chan_FIX_aff010",
+        "textOriginal": "Our best treadmill review is two years old, still ranks, but half the models are discontinued. Do we rewrite it, redirect it, or build a new 2026 page?",
+        "publishedAt": "2026-05-02T12:00:00.000Z",
+        "likeCount": 29,
+        "replyCount": 8,
+        "isChannelOwner": false,
+        "language": "en",
+        "signals": [
+          "affiliate",
+          "revenue_pain",
+          "buyer_intent_affiliate",
+          "content_opportunity",
+          "replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_010",
+        "commentId": "com_010",
+        "status": "new",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Affiliate publisher fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "content_strategy"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_010_a",
+            "opportunityId": "opp_010",
+            "style": "helpful_consultative",
+            "body": "If it still ranks and matches intent, refresh the existing URL first: availability, alternatives, pricing, and testing notes. Build a new page only if the query intent changed.",
+            "complianceNotes": [
+              "Affiliate disclosure/trust safe wording",
+              "No earnings guarantees",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_010",
+            "opportunityId": "opp_010",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Affiliate-only sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z",
+        "opportunityType": "affiliate_publisher_opportunity",
+        "opportunityTypeLabel": "Affiliate publisher opportunity",
+        "sourceType": "youtube_comment"
+      }
+    },
+    {
+      "id": "sample_011",
+      "video": {
+        "id": "vid_affiliate_011",
+        "youtubeVideoId": "yt_FIX_aff011",
+        "title": "ClickBank Funnel Reality Check",
+        "channelName": "Offer Lab",
+        "publishedAt": "2026-05-01T12:00:00.000Z",
+        "topic": "affiliate_marketing",
+        "offerFit": [
+          "affiliate_funnel"
+        ],
+        "url": "https://youtube.example/watch?v=yt_FIX_aff011",
+        "sourceType": "fixture"
+      },
+      "comment": {
+        "id": "com_011",
+        "videoId": "vid_affiliate_011",
+        "youtubeCommentId": "ytc_FIX_aff011",
+        "authorDisplayName": "Funnel Newbie",
+        "authorChannelId": "chan_FIX_aff011",
+        "textOriginal": "I am promoting a ClickBank offer from YouTube descriptions. Lots of clicks, zero sales. Should I send people to a bridge page first or is that just extra friction?",
+        "publishedAt": "2026-05-02T12:00:00.000Z",
+        "likeCount": 11,
+        "replyCount": 4,
+        "isChannelOwner": false,
+        "language": "en",
+        "signals": [
+          "affiliate",
+          "revenue_pain",
+          "buyer_intent_affiliate",
+          "replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_011",
+        "commentId": "com_011",
+        "status": "new",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Affiliate publisher fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "affiliate_funnel"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_011_a",
+            "opportunityId": "opp_011",
+            "style": "helpful_consultative",
+            "body": "A bridge page can help if it pre-sells honestly: who the offer fits, who should skip it, and what to check before buying. Test it against direct linking.",
+            "complianceNotes": [
+              "Affiliate disclosure/trust safe wording",
+              "No earnings guarantees",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_011",
+            "opportunityId": "opp_011",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Affiliate-only sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z",
+        "opportunityType": "affiliate_publisher_opportunity",
+        "opportunityTypeLabel": "Affiliate publisher opportunity",
+        "sourceType": "youtube_comment"
+      }
+    },
+    {
+      "id": "sample_012",
+      "video": {
+        "id": "vid_affiliate_012",
+        "youtubeVideoId": "yt_FIX_aff012",
+        "title": "Affiliate Spam Examples",
+        "channelName": "Publisher Ethics",
+        "publishedAt": "2026-05-01T12:00:00.000Z",
+        "topic": "affiliate_marketing",
+        "offerFit": [
+          "disclosure_trust"
+        ],
+        "url": "https://youtube.example/watch?v=yt_FIX_aff012",
+        "sourceType": "fixture"
+      },
+      "comment": {
+        "id": "com_012",
+        "videoId": "vid_affiliate_012",
+        "youtubeCommentId": "ytc_FIX_aff012",
+        "authorDisplayName": "CryptoKing777",
+        "authorChannelId": "chan_FIX_aff012",
+        "textOriginal": "I made $18,400 in 9 days with this secret AI crypto affiliate system. Reply INFO and I send the private link before YouTube deletes it.",
+        "publishedAt": "2026-05-02T12:00:00.000Z",
+        "likeCount": 0,
+        "replyCount": 1,
+        "isChannelOwner": false,
+        "language": "en",
+        "signals": [
+          "affiliate",
+          "spam",
+          "compliance_risk",
+          "earnings_claim",
+          "not_replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_012",
+        "commentId": "com_012",
+        "status": "rejected",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Affiliate publisher fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reject_as_spam",
+        "detectedOfferFit": [],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_012",
+            "opportunityId": "opp_012",
+            "fromStatus": null,
+            "toStatus": "rejected",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Affiliate-only sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z",
+        "opportunityType": "affiliate_publisher_opportunity",
+        "opportunityTypeLabel": "Affiliate publisher opportunity",
+        "sourceType": "youtube_comment"
+      }
+    },
+    {
+      "id": "sample_013",
+      "video": {
+        "id": "vid_consumer_013",
+        "youtubeVideoId": "yt_FIX_cons013",
+        "title": "Camera Buying Guide for Travel Creators",
+        "channelName": "Practical Gear Reviews",
+        "publishedAt": "2026-05-03T12:00:00.000Z",
+        "topic": "consumer_product_reviews",
+        "offerFit": [
+          "consumer_product_recommendation"
+        ],
+        "sourceType": "fixture",
+        "url": "https://youtube.example/watch?v=yt_FIX_cons013"
+      },
+      "comment": {
+        "id": "com_013",
+        "videoId": "vid_consumer_013",
+        "youtubeCommentId": "ytc_FIX_cons013",
+        "authorDisplayName": "Maya Shoots",
+        "authorChannelId": "chan_FIX_cons013",
+        "textOriginal": "Which product should I buy for travel videos if I want good autofocus and do not want to carry a huge camera?",
+        "publishedAt": "2026-05-04T12:00:00.000Z",
+        "likeCount": 18,
+        "replyCount": 6,
+        "isChannelOwner": false,
+        "language": "en",
+        "buyerQuestionMeta": {
+          "recommendationIntent": true,
+          "comparisonIntent": false,
+          "budgetConstraint": null,
+          "productCategory": "camera",
+          "urgency": null
+        },
+        "signals": [
+          "consumer_buyer_question",
+          "recommendation_intent",
+          "product_category",
+          "replyable",
+          "content_opportunity"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_013",
+        "commentId": "com_013",
+        "status": "new",
+        "opportunityType": "consumer_buyer_question",
+        "opportunityTypeLabel": "Consumer buyer question",
+        "sourceType": "youtube_comment",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Consumer buyer-question fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "consumer_product_recommendation"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_013_a",
+            "opportunityId": "opp_013",
+            "style": "helpful_consultative",
+            "body": "Start with the decision criteria: size, autofocus, stabilization, and lens budget. A safe reply can suggest comparing those needs before naming any single model.",
+            "complianceNotes": [
+              "No guaranteed outcome",
+              "No private data request",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_013",
+            "opportunityId": "opp_013",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Consumer buyer-question sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z"
+      }
+    },
+    {
+      "id": "sample_014",
+      "video": {
+        "id": "vid_consumer_014",
+        "youtubeVideoId": "yt_FIX_cons014",
+        "title": "Best Standing Desks for Small Apartments",
+        "channelName": "Home Office Lab",
+        "publishedAt": "2026-05-03T12:00:00.000Z",
+        "topic": "consumer_product_reviews",
+        "offerFit": [
+          "consumer_product_recommendation"
+        ],
+        "sourceType": "fixture",
+        "url": "https://youtube.example/watch?v=yt_FIX_cons014"
+      },
+      "comment": {
+        "id": "com_014",
+        "videoId": "vid_consumer_014",
+        "youtubeCommentId": "ytc_FIX_cons014",
+        "authorDisplayName": "Desk Hunter",
+        "authorChannelId": "chan_FIX_cons014",
+        "textOriginal": "What is the best standing desk under $300 for a small apartment? I need to buy one this week and cannot fit a giant frame.",
+        "publishedAt": "2026-05-04T12:00:00.000Z",
+        "likeCount": 27,
+        "replyCount": 9,
+        "isChannelOwner": false,
+        "language": "en",
+        "buyerQuestionMeta": {
+          "recommendationIntent": true,
+          "comparisonIntent": false,
+          "budgetConstraint": "under $300",
+          "productCategory": "standing desk",
+          "urgency": "this week"
+        },
+        "signals": [
+          "consumer_buyer_question",
+          "recommendation_intent",
+          "budget_constraint",
+          "product_category",
+          "urgent",
+          "replyable",
+          "content_opportunity"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_014",
+        "commentId": "com_014",
+        "status": "new",
+        "opportunityType": "consumer_buyer_question",
+        "opportunityTypeLabel": "Consumer buyer question",
+        "sourceType": "youtube_comment",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Consumer buyer-question fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "consumer_product_recommendation"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_014_a",
+            "opportunityId": "opp_014",
+            "style": "helpful_consultative",
+            "body": "A useful answer can narrow by width, stability, return policy, and cable management for small spaces, then name a couple of safe options if Steve has vetted them.",
+            "complianceNotes": [
+              "No guaranteed outcome",
+              "No private data request",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_014",
+            "opportunityId": "opp_014",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Consumer buyer-question sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z"
+      }
+    },
+    {
+      "id": "sample_015",
+      "video": {
+        "id": "vid_consumer_015",
+        "youtubeVideoId": "yt_FIX_cons015",
+        "title": "Noise Canceling Headphones Compared",
+        "channelName": "Audio Decision Desk",
+        "publishedAt": "2026-05-03T12:00:00.000Z",
+        "topic": "consumer_product_reviews",
+        "offerFit": [
+          "consumer_product_recommendation"
+        ],
+        "sourceType": "fixture",
+        "url": "https://youtube.example/watch?v=yt_FIX_cons015"
+      },
+      "comment": {
+        "id": "com_015",
+        "videoId": "vid_consumer_015",
+        "youtubeCommentId": "ytc_FIX_cons015",
+        "authorDisplayName": "Frequent Flyer Cam",
+        "authorChannelId": "chan_FIX_cons015",
+        "textOriginal": "Sony XM5 vs Bose QuietComfort Ultra: which is better for flights and Zoom calls, or should I save money with the older model?",
+        "publishedAt": "2026-05-04T12:00:00.000Z",
+        "likeCount": 34,
+        "replyCount": 12,
+        "isChannelOwner": false,
+        "language": "en",
+        "buyerQuestionMeta": {
+          "recommendationIntent": true,
+          "comparisonIntent": true,
+          "budgetConstraint": "save money with older model",
+          "productCategory": "headphones",
+          "urgency": null
+        },
+        "signals": [
+          "consumer_buyer_question",
+          "recommendation_intent",
+          "comparison_intent",
+          "budget_constraint",
+          "product_category",
+          "replyable",
+          "content_opportunity"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_015",
+        "commentId": "com_015",
+        "status": "new",
+        "opportunityType": "consumer_buyer_question",
+        "opportunityTypeLabel": "Consumer buyer question",
+        "sourceType": "youtube_comment",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Consumer buyer-question fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "consumer_product_recommendation"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_015_a",
+            "opportunityId": "opp_015",
+            "style": "helpful_consultative",
+            "body": "A safe reply can compare use cases: microphone quality, comfort on flights, ANC strength, and price gap, without pretending one answer fits everyone.",
+            "complianceNotes": [
+              "No guaranteed outcome",
+              "No private data request",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_015",
+            "opportunityId": "opp_015",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Consumer buyer-question sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z"
+      }
+    },
+    {
+      "id": "sample_016",
+      "video": {
+        "id": "vid_consumer_016",
+        "youtubeVideoId": "yt_FIX_cons016",
+        "title": "Premium Vacuum Review After 90 Days",
+        "channelName": "Clean Home Tests",
+        "publishedAt": "2026-05-03T12:00:00.000Z",
+        "topic": "consumer_product_reviews",
+        "offerFit": [
+          "consumer_product_recommendation"
+        ],
+        "sourceType": "fixture",
+        "url": "https://youtube.example/watch?v=yt_FIX_cons016"
+      },
+      "comment": {
+        "id": "com_016",
+        "videoId": "vid_consumer_016",
+        "youtubeCommentId": "ytc_FIX_cons016",
+        "authorDisplayName": "Apartment Pet Owner",
+        "authorChannelId": "chan_FIX_cons016",
+        "textOriginal": "Is the Dyson V15 worth it for pet hair, or is a cheaper vacuum good enough if I only have one rug?",
+        "publishedAt": "2026-05-04T12:00:00.000Z",
+        "likeCount": 13,
+        "replyCount": 4,
+        "isChannelOwner": false,
+        "language": "en",
+        "buyerQuestionMeta": {
+          "recommendationIntent": true,
+          "comparisonIntent": true,
+          "budgetConstraint": "cheaper vacuum",
+          "productCategory": "vacuum",
+          "urgency": null
+        },
+        "signals": [
+          "consumer_buyer_question",
+          "recommendation_intent",
+          "comparison_intent",
+          "budget_constraint",
+          "product_category",
+          "replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_016",
+        "commentId": "com_016",
+        "status": "new",
+        "opportunityType": "consumer_buyer_question",
+        "opportunityTypeLabel": "Consumer buyer question",
+        "sourceType": "youtube_comment",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Consumer buyer-question fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "consumer_product_recommendation"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_016_a",
+            "opportunityId": "opp_016",
+            "style": "helpful_consultative",
+            "body": "Answer with a decision rule: pet hair volume, floor type, storage, and maintenance cost. Avoid saying the expensive option is always best.",
+            "complianceNotes": [
+              "No guaranteed outcome",
+              "No private data request",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_016",
+            "opportunityId": "opp_016",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Consumer buyer-question sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z"
+      }
+    },
+    {
+      "id": "sample_017",
+      "video": {
+        "id": "vid_consumer_017",
+        "youtubeVideoId": "yt_FIX_cons017",
+        "title": "USB-C Monitors for MacBooks",
+        "channelName": "Desk Setup Notes",
+        "publishedAt": "2026-05-03T12:00:00.000Z",
+        "topic": "consumer_product_reviews",
+        "offerFit": [
+          "consumer_product_recommendation"
+        ],
+        "sourceType": "fixture",
+        "url": "https://youtube.example/watch?v=yt_FIX_cons017"
+      },
+      "comment": {
+        "id": "com_017",
+        "videoId": "vid_consumer_017",
+        "youtubeCommentId": "ytc_FIX_cons017",
+        "authorDisplayName": "Deadline Developer",
+        "authorChannelId": "chan_FIX_cons017",
+        "textOriginal": "Need to buy a USB-C monitor today for my MacBook, ideally under $400. What should I buy for coding and photo editing?",
+        "publishedAt": "2026-05-04T12:00:00.000Z",
+        "likeCount": 22,
+        "replyCount": 5,
+        "isChannelOwner": false,
+        "language": "en",
+        "buyerQuestionMeta": {
+          "recommendationIntent": true,
+          "comparisonIntent": false,
+          "budgetConstraint": "under $400",
+          "productCategory": "monitor",
+          "urgency": "today"
+        },
+        "signals": [
+          "consumer_buyer_question",
+          "recommendation_intent",
+          "budget_constraint",
+          "product_category",
+          "urgent",
+          "replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_017",
+        "commentId": "com_017",
+        "status": "new",
+        "opportunityType": "consumer_buyer_question",
+        "opportunityTypeLabel": "Consumer buyer question",
+        "sourceType": "youtube_comment",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Consumer buyer-question fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "consumer_product_recommendation"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_017_a",
+            "opportunityId": "opp_017",
+            "style": "helpful_consultative",
+            "body": "A reply should ask Steve to frame tradeoffs around color accuracy, USB-C power delivery, resolution, and return policy rather than promising a perfect pick.",
+            "complianceNotes": [
+              "No guaranteed outcome",
+              "No private data request",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_017",
+            "opportunityId": "opp_017",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Consumer buyer-question sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z"
+      }
+    },
+    {
+      "id": "sample_018",
+      "video": {
+        "id": "vid_consumer_018",
+        "youtubeVideoId": "yt_FIX_cons018",
+        "title": "Wellness Gadgets: What To Avoid",
+        "channelName": "Careful Buyer",
+        "publishedAt": "2026-05-03T12:00:00.000Z",
+        "topic": "consumer_product_reviews",
+        "offerFit": [
+          "consumer_product_recommendation"
+        ],
+        "sourceType": "fixture",
+        "url": "https://youtube.example/watch?v=yt_FIX_cons018"
+      },
+      "comment": {
+        "id": "com_018",
+        "videoId": "vid_consumer_018",
+        "youtubeCommentId": "ytc_FIX_cons018",
+        "authorDisplayName": "Anonymous Wellness",
+        "authorChannelId": "chan_FIX_cons018",
+        "textOriginal": "What supplement stack should I buy to cure anxiety fast? The ad says it is guaranteed and I need something before my doctor appointment.",
+        "publishedAt": "2026-05-04T12:00:00.000Z",
+        "likeCount": 4,
+        "replyCount": 1,
+        "isChannelOwner": false,
+        "language": "en",
+        "buyerQuestionMeta": {
+          "recommendationIntent": true,
+          "comparisonIntent": false,
+          "budgetConstraint": null,
+          "productCategory": "supplement",
+          "urgency": "before doctor appointment"
+        },
+        "signals": [
+          "consumer_buyer_question",
+          "recommendation_intent",
+          "product_category",
+          "urgent",
+          "regulated_caution",
+          "compliance_risk",
+          "not_replyable"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_018",
+        "commentId": "com_018",
+        "status": "new",
+        "opportunityType": "consumer_buyer_question",
+        "opportunityTypeLabel": "Consumer buyer question",
+        "sourceType": "youtube_comment",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "high",
+        "summary": "Consumer buyer-question fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reject_as_spam",
+        "detectedOfferFit": [
+          "consumer_product_recommendation"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_018_a",
+            "opportunityId": "opp_018",
+            "style": "risk_aware_decline",
+            "body": "This should not receive a product recommendation. A risk-aware response can suggest talking with a qualified professional and avoid medical advice.",
+            "complianceNotes": [
+              "No guaranteed outcome",
+              "No private data request",
+              "Steve approval required",
+              "Regulated health advice caution",
+              "Do not recommend treatment or diagnosis"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_018",
+            "opportunityId": "opp_018",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Consumer buyer-question sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z"
+      }
+    },
+    {
+      "id": "sample_019",
+      "video": {
+        "id": "vid_consumer_019",
+        "youtubeVideoId": "yt_FIX_cons019",
+        "title": "Budget Laptop Roundup",
+        "channelName": "Practical Gear Reviews",
+        "publishedAt": "2026-05-03T12:00:00.000Z",
+        "topic": "consumer_product_reviews",
+        "offerFit": [
+          "consumer_product_recommendation"
+        ],
+        "sourceType": "fixture",
+        "url": "https://youtube.example/watch?v=yt_FIX_cons019"
+      },
+      "comment": {
+        "id": "com_019",
+        "videoId": "vid_consumer_019",
+        "youtubeCommentId": "ytc_FIX_cons019",
+        "authorDisplayName": "Casual Viewer",
+        "authorChannelId": "chan_FIX_cons019",
+        "textOriginal": "Great video, the background music was nice.",
+        "publishedAt": "2026-05-04T12:00:00.000Z",
+        "likeCount": 2,
+        "replyCount": 0,
+        "isChannelOwner": false,
+        "language": "en",
+        "buyerQuestionMeta": {
+          "recommendationIntent": false,
+          "comparisonIntent": false,
+          "budgetConstraint": null,
+          "productCategory": "laptop",
+          "urgency": null
+        },
+        "signals": [
+          "low_fit"
+        ]
+      },
+      "opportunity": {
+        "id": "opp_019",
+        "commentId": "com_019",
+        "status": "new",
+        "opportunityType": "low_fit_comment",
+        "opportunityTypeLabel": "Low-fit comment",
+        "sourceType": "youtube_comment",
+        "overallScore": 0,
+        "priority": "low",
+        "riskLevel": "low",
+        "summary": "Low-fit fixture. Scored dynamically by the engine.",
+        "recommendedAction": "reply",
+        "detectedOfferFit": [
+          "consumer_product_recommendation"
+        ],
+        "evidenceSnippets": [],
+        "scoreDimensions": [],
+        "replyDrafts": [
+          {
+            "id": "draft_019_a",
+            "opportunityId": "opp_019",
+            "style": "helpful_consultative",
+            "body": "No draft is needed; this is a low-fit praise comment used to verify down-ranking.",
+            "complianceNotes": [
+              "No guaranteed outcome",
+              "No private data request",
+              "Steve approval required"
+            ],
+            "createdAt": "2026-05-07T16:45:00.000Z",
+            "createdBy": "fixture"
+          }
+        ],
+        "approvalStatusHistory": [
+          {
+            "id": "hist_019",
+            "opportunityId": "opp_019",
+            "fromStatus": null,
+            "toStatus": "new",
+            "changedAt": "2026-05-07T16:45:00.000Z",
+            "changedBy": "system_fixture",
+            "note": "Low-fit sample."
+          }
+        ],
+        "createdAt": "2026-05-07T16:45:00.000Z",
+        "updatedAt": "2026-05-07T16:45:00.000Z"
+      }
+    }
+  ]
+}
