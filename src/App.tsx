@@ -16,6 +16,7 @@ type WorkflowStep = 'start' | 'import' | 'review' | 'draft';
 type HealthConfig = { ok?: boolean; youtubeApiKeyConfigured?: boolean; aiDraftsConfigured?: boolean; aiDraftProvider?: string };
 type ImportSummary = { status: string; commentsFetched: number; commentsInserted: number; estimatedQuotaUnits: number; totalPersisted: number; freshCount: number; staleCount: number; hotCount: number; publisherCount: number; buyerCount: number; lowFitCount: number };
 type ImportPanelResult = { items: ScoredFixture[]; message: string; summary?: ImportSummary };
+type PreviousScan = { id: string; title?: string; status: string; commentsFetched: number; commentsInserted: number; estimatedQuotaUnits: number; startedAt: string; completedAt?: string; metadata?: Record<string, any> };
 
 type ScoreDimension = {
   dimension: string;
@@ -781,7 +782,7 @@ function StandaloneModeGate({ children }: { children: React.ReactNode }) {
           <button className="source-button primary" type="button" onClick={leaveIframe}>Open standalone dashboard</button>
           <button className="source-button" type="button" onClick={copyDashboardUrl}>Copy dashboard URL</button>
         </div>
-        <small>After opening the standalone tab, use Load persisted queue, select a comment, generate drafts, and open YouTube links from there.</small>
+        <small>After opening the standalone tab, use Previous Scans, select a comment, generate draft ideas, and open YouTube links from there.</small>
         <code className="standalone-url">{currentUrl}</code>
       </section>
     </main>
@@ -828,7 +829,7 @@ function ImportSummaryPanel({ summary, onReview, onShowStale }: { summary?: Impo
           <span className="eyebrow">Import results</span>
           <h2>{summary.status === 'succeeded' ? 'Scan complete' : 'Saved queue loaded'}</h2>
         </div>
-        <strong>{summary.totalPersisted} saved opportunities</strong>
+        <strong>{summary.totalPersisted} opportunities shown</strong>
       </div>
       <div className="summary-grid">
         <StatCard label="Comments scanned" value={summary.commentsFetched} note="from YouTube" />
@@ -852,7 +853,7 @@ function SmartEmptyState({ importedCount, dataSource, workTab, freshnessWindow, 
   return (
     <div className="smart-empty-state">
       <h3>{noImports ? 'No imported comments yet' : 'No leads match this view'}</h3>
-      <p>{noImports ? 'Start by scanning a newer YouTube video, or load a saved queue if you already imported comments.' : `This view is filtered to ${workTabLabels[workTab].toLowerCase()} with ${freshnessWindow === 'all' ? 'all ages' : `the last ${freshnessWindow} days`}. The batch may have older or lower-score comments.`}</p>
+      <p>{noImports ? 'Start by scanning a newer YouTube video, or open Previous Scans if you already imported comments.' : `This view is filtered to ${workTabLabels[workTab].toLowerCase()} with ${freshnessWindow === 'all' ? 'all ages' : `the last ${freshnessWindow} days`}. The batch may have older or lower-score comments.`}</p>
       <div className="approval-hooks">
         <button className="workflow-button safe" type="button" onClick={onShowAll}>Show all imported comments</button>
         <button className="workflow-button" type="button" onClick={onShowStale}>Show stale research leads</button>
@@ -868,19 +869,33 @@ function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile;
   const [maxPages, setMaxPages] = useState(1);
   const [maxCommentsPerVideo, setMaxCommentsPerVideo] = useState(100);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('Start by scanning a niche, or load any persisted queue from prior imports.');
+  const [message, setMessage] = useState('Start by scanning a niche, or open Previous Scans from earlier imports.');
   const [scanDepth, setScanDepth] = useState(5);
   const [daysBack, setDaysBack] = useState(30);
   const [scanMode, setScanMode] = useState<'niche' | 'manual'>('niche');
+  const [previousScans, setPreviousScans] = useState<PreviousScan[]>([]);
 
-  async function loadPersisted() {
+  async function loadPreviousScans() {
+    setLoading(true);
+    try {
+      const body = await apiJson('/api/import-runs?limit=10');
+      setPreviousScans(body.items || []);
+      setMessage(`Loaded ${body.items?.length || 0} previous scans. Click Load previous scan results to view the saved queue.`);
+    } catch (error) {
+      setMessage(`Previous scans not reachable yet: ${error instanceof Error ? error.message : 'unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadPreviousScanResults() {
     setLoading(true);
     try {
       const body = await apiJson('/api/opportunities?limit=250');
       const items = (body.items || []).map(normaliseImportedOpportunity);
       const summary = buildImportSummary(items);
-      onImported({ items, message: `Loaded ${items.length} persisted opportunities.`, summary });
-      setMessage(`Loaded ${items.length} persisted opportunities.`);
+      onImported({ items, message: `Loaded ${items.length} previous-scan opportunities.`, summary });
+      setMessage(`Loaded ${items.length} previous-scan opportunities.`);
     } catch (error) {
       setMessage(`Backend not reachable yet: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
@@ -902,12 +917,11 @@ function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile;
           maxResultsPerPage: Math.min(100, maxCommentsPerVideo),
         }),
       });
-      const opportunities = await apiJson('/api/opportunities?limit=250');
-      const items = (opportunities.items || []).map(normaliseImportedOpportunity);
+      const items = (body.items || []).map(normaliseImportedOpportunity);
       const importSummary = buildImportSummary(items, body.run);
-      const summary = `Niche scan complete: ${body.videosFound?.length || 0} videos found, ${body.run?.commentsFetched || 0} comments scanned, ${items.length} saved opportunities.`;
+      const summary = `Niche scan complete: ${body.videosFound?.length || 0} videos found, ${body.run?.commentsFetched || 0} comments scanned, ${items.length} current-scan opportunities shown.`;
       onImported({ items, message: summary, summary: importSummary });
-      setMessage(`${summary} Estimated quota: ${body.run?.estimatedQuotaUnits || 0} units. If few comments appear, try 90 days or a standard scan.`);
+      setMessage(`${summary} Estimated quota: ${body.run?.estimatedQuotaUnits || 0} units. Use Previous Scans if you want to see older scans too.`);
     } catch (error) {
       setMessage(`Niche scan failed safely: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
@@ -926,7 +940,7 @@ function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile;
       const opportunities = await apiJson('/api/opportunities?limit=250');
       const items = (opportunities.items || []).map(normaliseImportedOpportunity);
       const importSummary = buildImportSummary(items, body.run);
-      const summary = `Import ${body.run?.status || 'finished'}: ${body.run?.commentsFetched || 0} comments fetched, ${items.length} persisted opportunities available.`;
+      const summary = `Import ${body.run?.status || 'finished'}: ${body.run?.commentsFetched || 0} comments fetched, ${items.length} previous-scan opportunities available.`;
       onImported({ items, message: summary, summary: importSummary });
       setMessage(summary);
     } catch (error) {
@@ -982,8 +996,20 @@ function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile;
         ) : (
           <button className="workflow-button safe" type="button" disabled={loading || !videoUrls.trim()} onClick={importVideos}>{loading ? 'Working…' : 'Import read-only comments'}</button>
         )}
-        <button className="workflow-button" type="button" disabled={loading} onClick={loadPersisted}>Load persisted queue</button>
+        <button className="workflow-button" type="button" disabled={loading} onClick={loadPreviousScans}>Previous Scans</button>
+        <button className="workflow-button" type="button" disabled={loading} onClick={loadPreviousScanResults}>Load previous scan results</button>
       </div>
+      {previousScans.length > 0 && (
+        <div className="previous-scans-list" aria-label="Previous scans">
+          <strong>Previous Scans</strong>
+          {previousScans.slice(0, 5).map((scan) => (
+            <div key={scan.id} className="previous-scan-row">
+              <span>{scan.title || scan.id}</span>
+              <small>{scan.status} · {scan.commentsFetched} comments · quota {scan.estimatedQuotaUnits || 0}</small>
+            </div>
+          ))}
+        </div>
+      )}
       <small className="workflow-note">{message}</small>
     </section>
   );
