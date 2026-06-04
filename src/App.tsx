@@ -1082,7 +1082,7 @@ function App() {
     const fresh = isFreshForWindow(item, freshnessWindow);
     const stale = !isFreshForWindow(item, '14');
     const tabMatch = workTab === 'hot'
-      ? !done && item.score.overallScore >= 35 && item.score.opportunityType !== 'low_fit_comment'
+      ? !done && item.score.opportunityType !== 'low_fit_comment'
       : workTab === 'buyer'
         ? !done && fresh && item.score.opportunityType === 'consumer_buyer_question'
         : workTab === 'publisher'
@@ -1115,6 +1115,30 @@ function App() {
     risky: allItems.filter((item) => item.score.riskLevel !== 'low').length,
     approved: allItems.filter((item) => (localStatuses[item.id] ?? item.opportunity.status) === 'approved').length,
   };
+
+  async function showBestComments() {
+    setDataSource('imported');
+    setWorkTab('hot');
+    setFreshnessWindow('all');
+    setStatus('all');
+    setScoreBand('all');
+    setOpportunityType('all');
+    setNiche('all');
+
+    if (importedItems.length) {
+      return;
+    }
+
+    try {
+      const body = await apiJson('/api/opportunities?limit=250');
+      const items = (body.items || []).map(normaliseImportedOpportunity);
+      setImportedItems(items);
+      setLocalStatuses((current) => ({ ...Object.fromEntries(items.map((item: ScoredFixture) => [item.id, item.opportunity.status])), ...current }));
+      if (items[0]) setSelectedId(items[0].id);
+    } catch (error) {
+      console.warn('Could not load best comments', error);
+    }
+  }
 
   async function generateDraftsForSelected() {
     if (!selectedItem) return;
@@ -1160,7 +1184,7 @@ function App() {
           <p>Shows the strongest non-done comments from the current scan or previous scan you loaded. Use research leads for older/low-intent comments.</p>
         </div>
         <div className="approval-hooks">
-          <button className="workflow-button safe" type="button" onClick={() => { setDataSource('imported'); setWorkTab('hot'); setFreshnessWindow('all'); setStatus('all'); setScoreBand('all'); setOpportunityType('all'); setNiche('all'); }}>Show Best Comments</button>
+          <button className="workflow-button safe" type="button" onClick={showBestComments}>Show Best Comments</button>
           <button className="workflow-button" type="button" onClick={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }}>Show research leads</button>
           <button className="workflow-button" type="button" onClick={() => setShowAdvancedFilters((value) => !value)}>{showAdvancedFilters ? 'Hide advanced filters' : 'Advanced filters'}</button>
         </div>
@@ -1182,7 +1206,7 @@ function App() {
         setDataSource(items.length ? 'imported' : 'imported');
         setWorkTab(summary?.hotCount ? 'hot' : summary?.staleCount ? 'stale' : 'publisher');
         if (summary?.staleCount && !summary.hotCount) setFreshnessWindow('all');
-        setLocalStatuses((current) => ({ ...Object.fromEntries(items.map((item) => [item.id, item.opportunity.status])), ...current }));
+        setLocalStatuses((current) => ({ ...Object.fromEntries(items.map((item: ScoredFixture) => [item.id, item.opportunity.status])), ...current }));
         if (items[0]) setSelectedId(items[0].id);
         console.info(message);
       }} />
