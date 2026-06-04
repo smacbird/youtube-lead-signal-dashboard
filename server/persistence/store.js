@@ -61,6 +61,91 @@ export class JsonImportStore {
       .slice(0, Math.max(1, Math.min(Number(limit) || 25, 100)));
   }
 
+
+  async getImportRun(runId) {
+    const store = await this.load();
+    return store.importRuns[runId] || null;
+  }
+
+  async listOpportunitiesForRun(runId, { limit = 250 } = {}) {
+    const store = await this.load();
+    const run = store.importRuns[runId];
+    if (!run) return { run: null, items: [] };
+    const videoIds = new Set(run.requestedVideoIds || []);
+    const items = Object.values(store.opportunities)
+      .filter((opportunity) => {
+        const video = store.videos[opportunity.videoId];
+        return videoIds.has(video?.youtubeVideoId || video?.id || opportunity.videoId);
+      })
+      .sort((a, b) => (b.overallScore || 0) - (a.overallScore || 0))
+      .slice(0, Math.max(1, Math.min(Number(limit) || 250, 500)))
+      .map((opportunity) => hydrateOpportunity(store, opportunity.id));
+    return { run, items };
+  }
+
+  async deleteImportRun(runId, { cascade = true } = {}) {
+    return this.mutate((store) => {
+      const run = store.importRuns[runId];
+      const existed = Boolean(run);
+      if (!run) return { deleted: false, removed: { videos: 0, comments: 0, opportunities: 0, drafts: 0, scoreDimensions: 0, statusHistory: 0 } };
+
+      const removed = { videos: 0, comments: 0, opportunities: 0, drafts: 0, scoreDimensions: 0, statusHistory: 0 };
+      if (cascade) {
+        const youtubeVideoIds = new Set(run.requestedVideoIds || []);
+        const internalVideoIds = new Set();
+        for (const [videoId, video] of Object.entries(store.videos || {})) {
+          if (youtubeVideoIds.has(video.youtubeVideoId || video.id || videoId)) internalVideoIds.add(videoId);
+        }
+
+        const opportunityIds = new Set();
+        const commentIds = new Set();
+        for (const [opportunityId, opportunity] of Object.entries(store.opportunities || {})) {
+          if (internalVideoIds.has(opportunity.videoId)) {
+            opportunityIds.add(opportunityId);
+            if (opportunity.commentId) commentIds.add(opportunity.commentId);
+          }
+        }
+
+        for (const draftId of Object.keys(store.replyDrafts || {})) {
+          if (opportunityIds.has(store.replyDrafts[draftId]?.opportunityId)) {
+            delete store.replyDrafts[draftId];
+            removed.drafts += 1;
+          }
+        }
+        for (const dimensionId of Object.keys(store.scoreDimensions || {})) {
+          if (opportunityIds.has(dimensionId)) {
+            delete store.scoreDimensions[dimensionId];
+            removed.scoreDimensions += 1;
+          }
+        }
+        for (const historyId of Object.keys(store.statusHistory || {})) {
+          if (opportunityIds.has(store.statusHistory[historyId]?.opportunityId)) {
+            delete store.statusHistory[historyId];
+            removed.statusHistory += 1;
+          }
+        }
+        for (const opportunityId of opportunityIds) {
+          delete store.opportunities[opportunityId];
+          removed.opportunities += 1;
+        }
+        for (const commentId of commentIds) {
+          delete store.comments[commentId];
+          removed.comments += 1;
+        }
+        for (const videoId of internalVideoIds) {
+          const stillReferenced = Object.values(store.opportunities || {}).some((opportunity) => opportunity.videoId === videoId);
+          if (!stillReferenced) {
+            delete store.videos[videoId];
+            removed.videos += 1;
+          }
+        }
+      }
+
+      delete store.importRuns[runId];
+      return { deleted: existed, removed };
+    });
+  }
+
   async transitionStatus(opportunityId, toStatus, { changedBy = 'operator_manual', note = '' } = {}) {
     if (!VALID_STATUSES.has(toStatus)) throw new Error(`invalid_status:${toStatus}`);
     return this.mutate((store) => transitionOpportunityStatus(store, opportunityId, toStatus, { changedBy, note }));

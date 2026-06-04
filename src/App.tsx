@@ -903,6 +903,35 @@ function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile;
     }
   }
 
+  async function loadOnePreviousScan(scanId: string) {
+    setLoading(true);
+    try {
+      const body = await apiJson(`/api/import-runs/${encodeURIComponent(scanId)}?limit=250`);
+      const items = (body.items || []).map(normaliseImportedOpportunity);
+      const summary = buildImportSummary(items, body.run);
+      onImported({ items, message: `Loaded previous scan: ${body.run?.title || scanId}`, summary });
+      setMessage(`Loaded previous scan: ${body.run?.title || scanId}`);
+    } catch (error) {
+      setMessage(`Could not load previous scan: ${error instanceof Error ? error.message : 'unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deletePreviousScan(scanId: string) {
+    if (!window.confirm('Delete this previous scan and remove its comments, opportunities, drafts, and review history?')) return;
+    setLoading(true);
+    try {
+      await apiJson(`/api/import-runs/${encodeURIComponent(scanId)}`, { method: 'DELETE' });
+      setPreviousScans((current) => current.filter((scan) => scan.id !== scanId));
+      setMessage('Previous scan and its related comments/opportunities were deleted.');
+    } catch (error) {
+      setMessage(`Could not delete previous scan: ${error instanceof Error ? error.message : 'unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function scanByNiche() {
     setLoading(true);
     try {
@@ -1002,10 +1031,15 @@ function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile;
       {previousScans.length > 0 && (
         <div className="previous-scans-list" aria-label="Previous scans">
           <strong>Previous Scans</strong>
-          {previousScans.slice(0, 5).map((scan) => (
+          {previousScans.slice(0, 10).map((scan) => (
             <div key={scan.id} className="previous-scan-row">
-              <span>{scan.title || scan.id}</span>
-              <small>{scan.status} · {scan.commentsFetched} comments · quota {scan.estimatedQuotaUnits || 0}</small>
+              <button className="previous-scan-title" type="button" onClick={() => loadOnePreviousScan(scan.id)}>
+                {scan.title || scan.id}
+              </button>
+              <div className="previous-scan-meta">
+                <small>{scan.status} · {scan.commentsFetched} comments · quota {scan.estimatedQuotaUnits || 0}</small>
+                <button className="delete-scan-button" type="button" onClick={() => deletePreviousScan(scan.id)}>Delete</button>
+              </div>
             </div>
           ))}
         </div>
@@ -1110,26 +1144,23 @@ function App() {
         </div>
         <div className="stats-row">
           <StatCard label="Saved leads" value={importedItems.length} note="real imported queue" />
-          <StatCard label="Today queue" value={filteredItems.length} note={workTabLabels[workTab]} />
+          <StatCard label="Best comments" value={filteredItems.length} note={workTabLabels[workTab]} />
           <StatCard label="Fresh comments" value={allItems.filter((item) => isFreshForWindow(item, '14')).length} note="last 14 days" />
           <StatCard label="Draft mode" value={healthConfig.aiDraftsConfigured ? 'AI' : 'Safe'} note={healthConfig.aiDraftsConfigured ? 'AI-powered' : 'template fallback'} />
         </div>
       </section>
 
-      <section className="boundary-strip" aria-label="Safety boundary">
-        <strong>Safety boundary:</strong> read-only YouTube imports, no auto-replies, no posting, no moderation. Steve reviews, copies, edits, and posts manually.
-      </section>
 
       <WorkflowSteps step={importedItems.length ? 'review' : 'import'} importedCount={importedItems.length} selectedItem={selectedItem} />
 
       <section className="start-panel" aria-label="Start here">
         <div>
           <span className="eyebrow">Start here</span>
-          <h2>Today's action queue</h2>
+          <h2>Best Comments to Act on Right Now</h2>
           <p>Default view shows imported, fresh, score-qualified leads. If it is empty, the batch probably contains older comments or research leads instead of reply-worthy opportunities.</p>
         </div>
         <div className="approval-hooks">
-          <button className="workflow-button safe" type="button" onClick={() => { setDataSource('imported'); setWorkTab('hot'); setFreshnessWindow('14'); setStatus('all'); setScoreBand('all'); setOpportunityType('all'); }}>Show today's action queue</button>
+          <button className="workflow-button safe" type="button" onClick={() => { setDataSource('imported'); setWorkTab('hot'); setFreshnessWindow('14'); setStatus('all'); setScoreBand('all'); setOpportunityType('all'); }}>Show Best Comments</button>
           <button className="workflow-button" type="button" onClick={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }}>Show research leads</button>
           <button className="workflow-button" type="button" onClick={() => setShowAdvancedFilters((value) => !value)}>{showAdvancedFilters ? 'Hide advanced filters' : 'Advanced filters'}</button>
         </div>
@@ -1137,7 +1168,7 @@ function App() {
 
       <section className="filters niche-profile-filters" aria-label="Niche profile selector">
         <div>
-          <span>Step 1 · Niche profile</span>
+          <span className="step-label">Step 1 · Niche profile</span>
           {(['affiliate_marketing', 'money_making', 'work_from_home', 'side_hustles', 'biz_opp', 'ai_tools', 'traffic_leads', 'organic_traffic', 'custom'] as NicheProfile[]).map((value) => (
             <FilterButton key={value} active={nicheProfile === value} value={value} label={nicheProfileLabels[value]} onClick={setNicheProfile} />
           ))}
@@ -1164,7 +1195,7 @@ function App() {
 
       <section className="filters work-tabs" aria-label="Review inbox tabs">
         <div>
-          <span>Step 3 · Review inbox</span>
+          <span className="step-label">Step 3 · Review inbox</span>
           {(['hot', 'buyer', 'publisher', 'content', 'low_fit', 'stale', 'done'] as WorkTab[]).map((value) => (
             <FilterButton key={value} active={workTab === value} value={value} label={workTabLabels[value]} onClick={setWorkTab} />
           ))}

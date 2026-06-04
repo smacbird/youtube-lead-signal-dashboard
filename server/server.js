@@ -173,6 +173,25 @@ async function handle(request, response) {
     }
 
 
+
+    const importRunMatch = url.pathname.match(/^\/api\/import-runs\/([^/]+)$/);
+    if (request.method === 'GET' && importRunMatch) {
+      const result = await store.listOpportunitiesForRun(importRunMatch[1], { limit: url.searchParams.get('limit') || 250 });
+      if (!result.run) {
+        sendJson(response, 404, { error: { code: 'scan_not_found', message: 'Previous scan not found.' } });
+        return;
+      }
+      const run = { ...result.run, title: result.run.title || formatScanTitle({ profileLabel: result.run.metadata?.profileLabel || (result.run.metadata?.scanType === 'manual' ? 'Manual URLs' : 'Previous scan'), daysBack: result.run.metadata?.daysBack || 'manual', maxVideos: result.run.metadata?.maxVideos || result.run.requestedVideoIds?.length || 'manual', commentsFetched: result.run.commentsFetched, startedAt: result.run.startedAt }) };
+      sendJson(response, 200, { run, items: result.items });
+      return;
+    }
+
+    if (request.method === 'DELETE' && importRunMatch) {
+      const result = await store.deleteImportRun(importRunMatch[1]);
+      sendJson(response, 200, result);
+      return;
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/niche-profiles') {
       sendJson(response, 200, { items: listNicheProfiles() });
       return;
