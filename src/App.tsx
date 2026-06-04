@@ -10,7 +10,7 @@ type ScoreBand = 'all' | 'urgent' | 'high' | 'medium' | 'low';
 type DraftStyle = 'helpful_consultative' | 'concise_resource' | 'content_follow_up' | 'risk_aware_decline';
 type OpportunityType = 'all' | 'affiliate_publisher_opportunity' | 'consumer_buyer_question' | 'low_fit_comment';
 type WorkTab = 'hot' | 'buyer' | 'publisher' | 'content' | 'low_fit' | 'stale' | 'done';
-type NicheProfile = 'affiliate_marketing' | 'money_making' | 'work_from_home' | 'custom';
+type NicheProfile = 'affiliate_marketing' | 'money_making' | 'work_from_home' | 'side_hustles' | 'biz_opp' | 'ai_tools' | 'traffic_leads' | 'organic_traffic' | 'custom';
 type FreshnessWindow = '7' | '14' | '30' | 'all';
 type WorkflowStep = 'start' | 'import' | 'review' | 'draft';
 type HealthConfig = { ok?: boolean; youtubeApiKeyConfigured?: boolean; aiDraftsConfigured?: boolean; aiDraftProvider?: string };
@@ -112,8 +112,13 @@ const workTabLabels: Record<WorkTab, string> = {
 
 const nicheProfileLabels: Record<NicheProfile, string> = {
   affiliate_marketing: 'Affiliate marketing',
-  money_making: 'Money-making opportunities · coming soon',
-  work_from_home: 'Work at home · coming soon',
+  money_making: 'Money-making opportunities',
+  work_from_home: 'Work at home',
+  side_hustles: 'Side hustles',
+  biz_opp: 'Business opportunity / biz opp',
+  ai_tools: 'AI tools/software',
+  traffic_leads: 'Getting Traffic/leads',
+  organic_traffic: 'Organic Traffic',
   custom: 'Custom / later',
 };
 
@@ -857,13 +862,16 @@ function SmartEmptyState({ importedCount, dataSource, workTab, freshnessWindow, 
   );
 }
 
-function ImportPanel({ onImported }: { onImported: (result: ImportPanelResult) => void }) {
+function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile; onImported: (result: ImportPanelResult) => void }) {
   const [videoUrls, setVideoUrls] = useState('');
   const [maxVideos, setMaxVideos] = useState(3);
   const [maxPages, setMaxPages] = useState(1);
   const [maxCommentsPerVideo, setMaxCommentsPerVideo] = useState(100);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('Start by importing real YouTube comments, or load any persisted queue from prior imports.');
+  const [message, setMessage] = useState('Start by scanning a niche, or load any persisted queue from prior imports.');
+  const [scanDepth, setScanDepth] = useState(10);
+  const [daysBack, setDaysBack] = useState(14);
+  const [scanMode, setScanMode] = useState<'niche' | 'manual'>('niche');
 
   async function loadPersisted() {
     setLoading(true);
@@ -875,6 +883,33 @@ function ImportPanel({ onImported }: { onImported: (result: ImportPanelResult) =
       setMessage(`Loaded ${items.length} persisted opportunities.`);
     } catch (error) {
       setMessage(`Backend not reachable yet: ${error instanceof Error ? error.message : 'unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function scanByNiche() {
+    setLoading(true);
+    try {
+      const body = await apiJson('/api/scan/youtube-niche', {
+        method: 'POST',
+        body: JSON.stringify({
+          profileId: nicheProfile,
+          maxVideos: scanDepth,
+          daysBack,
+          maxPagesPerVideo: maxPages,
+          maxCommentsPerRun: maxCommentsPerVideo,
+          maxResultsPerPage: Math.min(100, maxCommentsPerVideo),
+        }),
+      });
+      const opportunities = await apiJson('/api/opportunities?limit=250');
+      const items = (opportunities.items || []).map(normaliseImportedOpportunity);
+      const importSummary = buildImportSummary(items, body.run);
+      const summary = `Niche scan complete: ${body.videosFound?.length || 0} videos found, ${body.run?.commentsFetched || 0} comments scanned, ${items.length} saved opportunities.`;
+      onImported({ items, message: summary, summary: importSummary });
+      setMessage(`${summary} Estimated quota: ${body.run?.estimatedQuotaUnits || 0} units.`);
+    } catch (error) {
+      setMessage(`Niche scan failed safely: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -902,26 +937,58 @@ function ImportPanel({ onImported }: { onImported: (result: ImportPanelResult) =
   }
 
   return (
-    <section className="import-panel" aria-label="Read-only YouTube import">
+    <section className="import-panel" aria-label="Read-only YouTube scanner">
       <div>
-        <span className="eyebrow">Read-only import</span>
-        <h2>Import YouTube comments</h2>
-        <p>Paste video URLs, then import public comments into the persisted review queue. The backend reads only; it has no posting endpoint.</p>
+        <span className="eyebrow">Step 2 · Scan YouTube</span>
+        <h2>Scan by niche</h2>
+        <p>The system searches recent YouTube videos for the selected niche, imports public comments read-only, then scores the best opportunities. Manual URL paste is still available under the advanced option.</p>
       </div>
-      <textarea value={videoUrls} onChange={(event) => setVideoUrls(event.target.value)} placeholder="Paste one YouTube video URL per line" />
-      <div className="import-controls">
-        <label><span>Max videos</span><input type="number" min="1" max="10" value={maxVideos} onChange={(event) => setMaxVideos(Number(event.target.value) || 1)} /></label>
-        <label><span>Max pages/video</span><input type="number" min="1" max="5" value={maxPages} onChange={(event) => setMaxPages(Number(event.target.value) || 1)} /></label>
-        <label><span>Max comments/video</span><input type="number" min="1" max="500" value={maxCommentsPerVideo} onChange={(event) => setMaxCommentsPerVideo(Number(event.target.value) || 100)} /></label>
+
+      <div className="scan-mode-tabs" role="tablist" aria-label="Scan mode">
+        <button className={scanMode === 'niche' ? 'chip active' : 'chip'} type="button" onClick={() => setScanMode('niche')}>Scan by niche</button>
+        <button className={scanMode === 'manual' ? 'chip active' : 'chip'} type="button" onClick={() => setScanMode('manual')}>Paste specific URLs</button>
       </div>
+
+      {scanMode === 'niche' ? (
+        <div className="scan-settings-grid">
+          <label><span>Scan depth</span><select value={scanDepth} onChange={(event) => setScanDepth(Number(event.target.value))}>
+            <option value={5}>Quick scan · 5 videos</option>
+            <option value={10}>Standard scan · 10 videos</option>
+            <option value={25}>Deep scan · 25 videos</option>
+          </select></label>
+          <label><span>Video freshness</span><select value={daysBack} onChange={(event) => setDaysBack(Number(event.target.value))}>
+            <option value={7}>Videos from last 7 days</option>
+            <option value={14}>Videos from last 14 days</option>
+            <option value={30}>Videos from last 30 days</option>
+            <option value={90}>Videos from last 90 days</option>
+          </select></label>
+          <label><span>Comment cap</span><input type="number" min="25" max="500" value={maxCommentsPerVideo} onChange={(event) => setMaxCommentsPerVideo(Number(event.target.value) || 100)} /></label>
+          <label><span>Pages/video</span><input type="number" min="1" max="5" value={maxPages} onChange={(event) => setMaxPages(Number(event.target.value) || 1)} /></label>
+        </div>
+      ) : (
+        <>
+          <textarea value={videoUrls} onChange={(event) => setVideoUrls(event.target.value)} placeholder="Paste one YouTube video URL per line" />
+          <div className="import-controls">
+            <label><span>Max videos</span><input type="number" min="1" max="10" value={maxVideos} onChange={(event) => setMaxVideos(Number(event.target.value) || 1)} /></label>
+            <label><span>Max pages/video</span><input type="number" min="1" max="5" value={maxPages} onChange={(event) => setMaxPages(Number(event.target.value) || 1)} /></label>
+            <label><span>Max comments/video</span><input type="number" min="1" max="500" value={maxCommentsPerVideo} onChange={(event) => setMaxCommentsPerVideo(Number(event.target.value) || 100)} /></label>
+          </div>
+        </>
+      )}
+
       <div className="approval-hooks">
-        <button className="workflow-button safe" type="button" disabled={loading || !videoUrls.trim()} onClick={importVideos}>{loading ? 'Working…' : 'Import read-only comments'}</button>
+        {scanMode === 'niche' ? (
+          <button className="workflow-button safe" type="button" disabled={loading || nicheProfile === 'custom'} onClick={scanByNiche}>{loading ? 'Scanning…' : `Scan ${nicheProfileLabels[nicheProfile]}`}</button>
+        ) : (
+          <button className="workflow-button safe" type="button" disabled={loading || !videoUrls.trim()} onClick={importVideos}>{loading ? 'Working…' : 'Import read-only comments'}</button>
+        )}
         <button className="workflow-button" type="button" disabled={loading} onClick={loadPersisted}>Load persisted queue</button>
       </div>
       <small className="workflow-note">{message}</small>
     </section>
   );
 }
+
 
 function App() {
   const fixtureItems = useMemo(buildItems, []);
@@ -1045,14 +1112,14 @@ function App() {
       <section className="filters niche-profile-filters" aria-label="Niche profile selector">
         <div>
           <span>Step 1 · Niche profile</span>
-          {(['affiliate_marketing', 'money_making', 'work_from_home', 'custom'] as NicheProfile[]).map((value) => (
+          {(['affiliate_marketing', 'money_making', 'work_from_home', 'side_hustles', 'biz_opp', 'ai_tools', 'traffic_leads', 'organic_traffic', 'custom'] as NicheProfile[]).map((value) => (
             <FilterButton key={value} active={nicheProfile === value} value={value} label={nicheProfileLabels[value]} onClick={setNicheProfile} />
           ))}
         </div>
-        <small className="workflow-note">Affiliate marketing is active. Other profiles are visible on purpose, but marked coming soon until we add niche-specific scoring rules.</small>
+        <small className="workflow-note">These profiles now drive the YouTube search query bundle. Scoring is still strongest for affiliate/buyer intent and will get more niche-specific in later passes.</small>
       </section>
 
-      <ImportPanel onImported={({ items, message, summary }) => {
+      <ImportPanel nicheProfile={nicheProfile} onImported={({ items, message, summary }) => {
         setImportedItems(items);
         setImportSummary(summary);
         setDataSource(items.length ? 'imported' : 'imported');

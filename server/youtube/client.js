@@ -1,5 +1,5 @@
 const API_ROOT = 'https://www.googleapis.com/youtube/v3';
-const READ_ONLY_METHODS = new Set(['videos', 'commentThreads']);
+const READ_ONLY_METHODS = new Set(['videos', 'commentThreads', 'search']);
 
 function sanitizedError(code, message, status = 500, details = {}) {
   const error = new Error(message);
@@ -54,7 +54,7 @@ export class YouTubeReadOnlyClient {
 
   async request(resource, params) {
     if (!READ_ONLY_METHODS.has(resource)) {
-      throw sanitizedError('unsupported_youtube_resource', 'Only videos.list and commentThreads.list are supported by this client.', 400);
+      throw sanitizedError('unsupported_youtube_resource', 'Only search.list, videos.list, and commentThreads.list are supported by this client.', 400);
     }
     if (typeof this.fetchImpl !== 'function') {
       throw sanitizedError('fetch_unavailable', 'A fetch implementation is required for YouTube imports.', 500);
@@ -75,6 +75,20 @@ export class YouTubeReadOnlyClient {
       await sleep(250 * (attempt + 1));
     }
     throw sanitizedError('youtube_retry_exhausted', 'YouTube API retry attempts were exhausted.', 503);
+  }
+
+
+  async searchVideos({ query, publishedAfter, maxResults = 10, order = 'date' }) {
+    return this.request('search', {
+      part: 'snippet',
+      type: 'video',
+      q: query,
+      order,
+      maxResults: clamp(maxResults, 1, 25),
+      publishedAfter,
+      safeSearch: 'moderate',
+      relevanceLanguage: 'en',
+    });
   }
 
   async listVideos(videoIds) {

@@ -4,6 +4,7 @@ import { extname, join, normalize } from 'node:path';
 import { JsonImportStore, hydrateOpportunity } from './persistence/store.js';
 import { importYouTubeVideos } from './import/importService.js';
 import { YouTubeReadOnlyClient } from './youtube/client.js';
+import { listNicheProfiles, resolveNicheProfile } from './youtube/nicheProfiles.js';
 import { generateReplyDrafts } from './ai/draftGenerator.js';
 
 const PORT = Number(process.env.PORT || 4174);
@@ -58,6 +59,84 @@ function routeError(response, error) {
   sendJson(response, status, { error: { code: error?.code || 'server_error', message: error?.message || 'Server error.' } });
 }
 
+
+function daysAgoIso(days) {
+  const date = new Date(Date.now() - Math.max(1, Number(days) || 14) * 86400000);
+  return date.toISOString();
+}
+
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+async function scanNiche({ body, store, youtubeClient }) {
+  const profileId = body.profileId || body.nicheProfile || 'affiliate_marketing';
+  const profile = resolveNicheProfile(profileId);
+  const maxVideos = clampNumber(body.maxVideos, 1, 25, 10);
+  const daysBack = clampNumber(body.daysBack, 1, 90, 14);
+  const queries = Array.isArray(body.queries) && body.queries.length
+    ? body.queries.map((value) => String(value).trim()).filter(Boolean).slice(0, 8)
+    : profile.queries;
+  const perQuery = Math.max(1, Math.ceil(maxVideos / Math.max(1, queries.length)));
+  const publishedAfter = daysAgoIso(daysBack);
+  const found = [];
+  const seen = new Set();
+  const searchErrors = [];
+  let estimatedSearchQuotaUnits = 0;
+
+  for (const query of queries) {
+    if (found.length >= maxVideos) break;
+    try {
+      estimatedSearchQuotaUnits += 100;
+      const response = await youtubeClient.searchVideos({ query, publishedAfter, maxResults: perQuery, order: body.order || 'date' });
+      for (const item of response.items || []) {
+        const id = item?.id?.videoId;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        found.push({
+          id,
+          url: `https://www.youtube.com/watch?v=${id}`,
+          title: item?.snippet?.title || 'YouTube video',
+          channelTitle: item?.snippet?.channelTitle || '',
+          publishedAt: item?.snippet?.publishedAt || '',
+          matchedQuery: query,
+        });
+        if (found.length >= maxVideos) break;
+      }
+    } catch (error) {
+      searchErrors.push({ query, code: error?.code || 'search_error', message: error?.message || 'YouTube search failed.' });
+    }
+  }
+
+  const run = await importYouTubeVideos({
+    inputs: found.map((video) => video.url),
+    options: {
+      ...body,
+      maxVideos,
+      maxPagesPerVideo: body.maxPagesPerVideo || body.maxPages || 1,
+      maxCommentsPerRun: body.maxCommentsPerRun || body.maxComments || 250,
+      maxResultsPerPage: body.maxResultsPerPage || body.maxCommentsPerVideo || 50,
+    },
+    store,
+    youtubeClient,
+  });
+  run.estimatedQuotaUnits += estimatedSearchQuotaUnits;
+  for (const error of searchErrors) run.errors.push(error);
+
+  return {
+    profileId,
+    profileLabel: profile.label,
+    queries,
+    daysBack,
+    videosFound: found,
+    estimatedSearchQuotaUnits,
+    searchErrors,
+    run,
+  };
+}
+
 async function handle(request, response) {
   const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
 
@@ -76,6 +155,19 @@ async function handle(request, response) {
     if (request.method === 'GET' && url.pathname === '/api/import-runs') {
       const runs = await store.listImportRuns({ limit: url.searchParams.get('limit') || 25 });
       sendJson(response, 200, { items: runs });
+      return;
+    }
+
+
+    if (request.method === 'GET' && url.pathname === '/api/niche-profiles') {
+      sendJson(response, 200, { items: listNicheProfiles() });
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/scan/youtube-niche') {
+      const body = await readJson(request);
+      const result = await scanNiche({ body, store, youtubeClient });
+      sendJson(response, result.run.status === 'failed' && !result.videosFound.length ? 400 : 200, result);
       return;
     }
 
