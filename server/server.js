@@ -90,7 +90,7 @@ async function scanNiche({ body, store, youtubeClient }) {
     if (found.length >= maxVideos) break;
     try {
       estimatedSearchQuotaUnits += 100;
-      const response = await youtubeClient.searchVideos({ query, publishedAfter, maxResults: perQuery, order: body.order || 'date' });
+      const response = await youtubeClient.searchVideos({ query, publishedAfter, maxResults: perQuery, order: body.order || 'relevance' });
       for (const item of response.items || []) {
         const id = item?.id?.videoId;
         if (!id || seen.has(id)) continue;

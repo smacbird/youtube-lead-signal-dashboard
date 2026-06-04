@@ -869,8 +869,8 @@ function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile;
   const [maxCommentsPerVideo, setMaxCommentsPerVideo] = useState(100);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('Start by scanning a niche, or load any persisted queue from prior imports.');
-  const [scanDepth, setScanDepth] = useState(10);
-  const [daysBack, setDaysBack] = useState(14);
+  const [scanDepth, setScanDepth] = useState(5);
+  const [daysBack, setDaysBack] = useState(30);
   const [scanMode, setScanMode] = useState<'niche' | 'manual'>('niche');
 
   async function loadPersisted() {
@@ -907,7 +907,7 @@ function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile;
       const importSummary = buildImportSummary(items, body.run);
       const summary = `Niche scan complete: ${body.videosFound?.length || 0} videos found, ${body.run?.commentsFetched || 0} comments scanned, ${items.length} saved opportunities.`;
       onImported({ items, message: summary, summary: importSummary });
-      setMessage(`${summary} Estimated quota: ${body.run?.estimatedQuotaUnits || 0} units.`);
+      setMessage(`${summary} Estimated quota: ${body.run?.estimatedQuotaUnits || 0} units. If few comments appear, try 90 days or a standard scan.`);
     } catch (error) {
       setMessage(`Niche scan failed safely: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
@@ -941,7 +941,7 @@ function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile;
       <div>
         <span className="eyebrow">Step 2 · Scan YouTube</span>
         <h2>Scan by niche</h2>
-        <p>The system searches recent YouTube videos for the selected niche, imports public comments read-only, then scores the best opportunities. Manual URL paste is still available under the advanced option.</p>
+        <p>The system searches relevant recent YouTube videos for the selected niche, imports public comments read-only, then scores the best opportunities. It favors videos old enough to have comments, not just brand-new uploads.</p>
       </div>
 
       <div className="scan-mode-tabs" role="tablist" aria-label="Scan mode">
@@ -959,7 +959,7 @@ function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile;
           <label><span>Video freshness</span><select value={daysBack} onChange={(event) => setDaysBack(Number(event.target.value))}>
             <option value={7}>Videos from last 7 days</option>
             <option value={14}>Videos from last 14 days</option>
-            <option value={30}>Videos from last 30 days</option>
+            <option value={30}>Videos from last 30 days · recommended</option>
             <option value={90}>Videos from last 90 days</option>
           </select></label>
           <label><span>Comment cap</span><input type="number" min="25" max="500" value={maxCommentsPerVideo} onChange={(event) => setMaxCommentsPerVideo(Number(event.target.value) || 100)} /></label>
