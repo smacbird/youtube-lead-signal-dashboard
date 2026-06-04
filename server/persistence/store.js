@@ -136,7 +136,7 @@ export function persistScoredOpportunity(store, opportunity, dimensions = [], re
   return store.opportunities[opportunity.id];
 }
 
-export function createImportRun(store, requestedInputs, parsed) {
+export function createImportRun(store, requestedInputs, parsed, metadata = {}) {
   const now = new Date().toISOString();
   const id = `run_${now.replace(/[-:.TZ]/g, '')}_${Math.random().toString(36).slice(2, 8)}`;
   const run = {
@@ -155,6 +155,7 @@ export function createImportRun(store, requestedInputs, parsed) {
     errors: [],
     startedAt: now,
     completedAt: null,
+    metadata,
   };
   store.importRuns[id] = run;
   return run;

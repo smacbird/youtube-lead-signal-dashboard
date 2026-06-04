@@ -19,13 +19,13 @@ function sanitizeThrownError(error) {
   };
 }
 
-export async function importYouTubeVideos({ inputs, options = {}, store, youtubeClient }) {
+export async function importYouTubeVideos({ inputs, options = {}, store, youtubeClient, metadata = {} }) {
   const requestedInputs = Array.isArray(inputs) ? inputs : String(inputs || '').split(/[\n,]/).map((value) => value.trim()).filter(Boolean);
   const cappedOptions = clampImportOptions(options);
   const parsed = parseManyYouTubeVideoInputs(requestedInputs, cappedOptions.maxVideosPerRun);
 
   return store.mutate(async (state) => {
-    const run = createImportRun(state, requestedInputs, parsed);
+    const run = createImportRun(state, requestedInputs, parsed, metadata);
     if (!parsed.videoIds.length) {
       recordImportError(run, 'no_valid_video_ids', 'No supported YouTube video URLs or IDs were provided.');
       return finishImportRun(run, 'failed');

@@ -60,6 +60,12 @@ function routeError(response, error) {
 }
 
 
+
+function formatScanTitle({ profileLabel, daysBack, maxVideos, commentsFetched, startedAt }) {
+  const date = new Date(startedAt || Date.now()).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
+  return `${date} UTC · ${profileLabel || 'Manual scan'} · ${daysBack || 'custom'} days · ${maxVideos || 'manual'} videos · ${commentsFetched || 0} comments`;
+}
+
 function daysAgoIso(days) {
   const date = new Date(Date.now() - Math.max(1, Number(days) || 14) * 86400000);
   return date.toISOString();
@@ -121,9 +127,15 @@ async function scanNiche({ body, store, youtubeClient }) {
     },
     store,
     youtubeClient,
+    metadata: { scanType: 'niche', profileId, profileLabel: profile.label, queries, daysBack, maxVideos, order: body.order || 'relevance' },
   });
   run.estimatedQuotaUnits += estimatedSearchQuotaUnits;
+  run.title = formatScanTitle({ profileLabel: profile.label, daysBack, maxVideos, commentsFetched: run.commentsFetched, startedAt: run.startedAt });
   for (const error of searchErrors) run.errors.push(error);
+
+  const foundIds = new Set(found.map((video) => video.id));
+  const allOpportunities = await store.listOpportunities({ limit: 500 });
+  const currentScanItems = allOpportunities.filter((item) => foundIds.has(item.video?.youtubeVideoId || item.video?.id || item.videoId));
 
   return {
     profileId,
@@ -134,6 +146,8 @@ async function scanNiche({ body, store, youtubeClient }) {
     estimatedSearchQuotaUnits,
     searchErrors,
     run,
+    items: currentScanItems,
+    currentScanOpportunityCount: currentScanItems.length,
   };
 }
 
@@ -154,7 +168,7 @@ async function handle(request, response) {
 
     if (request.method === 'GET' && url.pathname === '/api/import-runs') {
       const runs = await store.listImportRuns({ limit: url.searchParams.get('limit') || 25 });
-      sendJson(response, 200, { items: runs });
+      sendJson(response, 200, { items: runs.map((run) => ({ ...run, title: run.title || formatScanTitle({ profileLabel: run.metadata?.profileLabel || (run.metadata?.scanType === 'manual' ? 'Manual URLs' : 'Previous scan'), daysBack: run.metadata?.daysBack || 'manual', maxVideos: run.metadata?.maxVideos || run.requestedVideoIds?.length || 'manual', commentsFetched: run.commentsFetched, startedAt: run.startedAt }) })) });
       return;
     }
 
@@ -173,7 +187,8 @@ async function handle(request, response) {
 
     if (request.method === 'POST' && url.pathname === '/api/import/youtube') {
       const body = await readJson(request);
-      const run = await importYouTubeVideos({ inputs: body.videoUrls || body.inputs || [], options: body, store, youtubeClient });
+      const run = await importYouTubeVideos({ inputs: body.videoUrls || body.inputs || [], options: body, store, youtubeClient, metadata: { scanType: 'manual', profileLabel: 'Manual URLs', maxVideos: body.maxVideos || body.videoUrls?.length || body.inputs?.length || 'manual' } });
+      run.title = formatScanTitle({ profileLabel: 'Manual URLs', daysBack: 'manual', maxVideos: run.requestedVideoIds?.length || 'manual', commentsFetched: run.commentsFetched, startedAt: run.startedAt });
       sendJson(response, run.status === 'failed' ? 400 : 200, { run });
       return;
     }
