@@ -12,6 +12,10 @@ type OpportunityType = 'all' | 'affiliate_publisher_opportunity' | 'consumer_buy
 type WorkTab = 'hot' | 'buyer' | 'publisher' | 'content' | 'low_fit' | 'stale' | 'done';
 type NicheProfile = 'affiliate_marketing' | 'money_making' | 'work_from_home' | 'custom';
 type FreshnessWindow = '7' | '14' | '30' | 'all';
+type WorkflowStep = 'start' | 'import' | 'review' | 'draft';
+type HealthConfig = { ok?: boolean; youtubeApiKeyConfigured?: boolean; aiDraftsConfigured?: boolean; aiDraftProvider?: string };
+type ImportSummary = { status: string; commentsFetched: number; commentsInserted: number; estimatedQuotaUnits: number; totalPersisted: number; freshCount: number; staleCount: number; hotCount: number; publisherCount: number; buyerCount: number; lowFitCount: number };
+type ImportPanelResult = { items: ScoredFixture[]; message: string; summary?: ImportSummary };
 
 type ScoreDimension = {
   dimension: string;
@@ -108,8 +112,8 @@ const workTabLabels: Record<WorkTab, string> = {
 
 const nicheProfileLabels: Record<NicheProfile, string> = {
   affiliate_marketing: 'Affiliate marketing',
-  money_making: 'Money-making opportunities',
-  work_from_home: 'Work at home',
+  money_making: 'Money-making opportunities · coming soon',
+  work_from_home: 'Work at home · coming soon',
   custom: 'Custom / later',
 };
 
@@ -181,6 +185,29 @@ function isFreshForWindow(item: ScoredFixture, windowDays: FreshnessWindow) {
   const days = commentAgeDays(item);
   if (days === null) return false;
   return days <= Number(windowDays);
+}
+
+function buildImportSummary(items: ScoredFixture[], run?: any): ImportSummary {
+  return {
+    status: run?.status || 'loaded',
+    commentsFetched: Number(run?.commentsFetched || items.length || 0),
+    commentsInserted: Number(run?.commentsInserted || 0),
+    estimatedQuotaUnits: Number(run?.estimatedQuotaUnits || 0),
+    totalPersisted: items.length,
+    freshCount: items.filter((item) => isFreshForWindow(item, '14')).length,
+    staleCount: items.filter((item) => !isFreshForWindow(item, '14')).length,
+    hotCount: items.filter((item) => isFreshForWindow(item, '14') && item.score.overallScore >= 45 && item.score.opportunityType !== 'low_fit_comment').length,
+    publisherCount: items.filter((item) => item.score.opportunityType === 'affiliate_publisher_opportunity').length,
+    buyerCount: items.filter((item) => item.score.opportunityType === 'consumer_buyer_question').length,
+    lowFitCount: items.filter((item) => item.score.opportunityType === 'low_fit_comment').length,
+  };
+}
+
+function workflowStepStatus(step: WorkflowStep, importedCount: number, selectedItem?: ScoredFixture) {
+  if (step === 'start') return importedCount ? 'ready' : 'current';
+  if (step === 'import') return importedCount ? 'done' : 'current';
+  if (step === 'review') return importedCount ? 'current' : 'locked';
+  return selectedItem ? 'current' : 'locked';
 }
 
 function whyThisMatters(item: ScoredFixture) {
@@ -626,9 +653,9 @@ function DetailPanel({
             } finally {
               setGeneratingDrafts(false);
             }
-          }}>{generatingDrafts ? 'Generating…' : 'Generate AI drafts'}</button>
+          }}>{generatingDrafts ? 'Generating…' : 'Generate safe draft ideas'}</button>
         </div>
-        <small className="workflow-note">{draftMessage || 'Draft selection only: no posting.'}</small>
+        <small className="workflow-note">{draftMessage || 'Draft selection only: no posting. Draft mode appears in the main workflow header.'}</small>
         {drafts.length ? (
           <>
             <div className="draft-tabs" role="tablist" aria-label="Reply draft variants">
@@ -767,7 +794,70 @@ async function apiJson(path: string, options?: RequestInit) {
   return body;
 }
 
-function ImportPanel({ onImported }: { onImported: (items: ScoredFixture[], message: string) => void }) {
+
+function WorkflowSteps({ step, importedCount, selectedItem }: { step: WorkflowStep; importedCount: number; selectedItem?: ScoredFixture }) {
+  const steps: Array<{ id: WorkflowStep; title: string; note: string }> = [
+    { id: 'start', title: '1. Choose niche', note: 'Start with affiliate marketing. Other profiles are staged for later.' },
+    { id: 'import', title: '2. Scan videos', note: 'Paste YouTube URLs and import public comments read-only.' },
+    { id: 'review', title: '3. Review best leads', note: 'Work from the action queue first, then research/stale tabs.' },
+    { id: 'draft', title: '4. Draft and copy', note: 'Generate safe ideas, copy, and post manually only.' },
+  ];
+  return (
+    <section className="workflow-steps" aria-label="Guided workflow">
+      {steps.map((item) => (
+        <div key={item.id} className={`workflow-step ${workflowStepStatus(item.id, importedCount, selectedItem)}`}>
+          <strong>{item.title}</strong>
+          <span>{item.note}</span>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function ImportSummaryPanel({ summary, onReview, onShowStale }: { summary?: ImportSummary; onReview: () => void; onShowStale: () => void }) {
+  if (!summary) return null;
+  return (
+    <section className="import-summary-card" aria-label="Import results summary">
+      <div className="section-heading-row">
+        <div>
+          <span className="eyebrow">Import results</span>
+          <h2>{summary.status === 'succeeded' ? 'Scan complete' : 'Saved queue loaded'}</h2>
+        </div>
+        <strong>{summary.totalPersisted} saved opportunities</strong>
+      </div>
+      <div className="summary-grid">
+        <StatCard label="Comments scanned" value={summary.commentsFetched} note="from YouTube" />
+        <StatCard label="Fresh leads" value={summary.freshCount} note="last 14 days" />
+        <StatCard label="Stale research" value={summary.staleCount} note="older than 14 days" />
+        <StatCard label="Hot leads" value={summary.hotCount} note="fresh + score filter" />
+        <StatCard label="Publisher questions" value={summary.publisherCount} note="affiliate/site owner" />
+        <StatCard label="Buyer questions" value={summary.buyerCount} note="product decisions" />
+      </div>
+      <div className="approval-hooks">
+        <button className="workflow-button safe" type="button" onClick={onReview}>Review best leads</button>
+        <button className="workflow-button" type="button" onClick={onShowStale}>Show stale research leads</button>
+      </div>
+      <small className="workflow-note">Quota used: {summary.estimatedQuotaUnits || 0} units. Older comments are usually better for content ideas than direct replies.</small>
+    </section>
+  );
+}
+
+function SmartEmptyState({ importedCount, dataSource, workTab, freshnessWindow, onShowAll, onShowStale, onImport }: { importedCount: number; dataSource: string; workTab: WorkTab; freshnessWindow: FreshnessWindow; onShowAll: () => void; onShowStale: () => void; onImport: () => void }) {
+  const noImports = dataSource === 'imported' && importedCount === 0;
+  return (
+    <div className="smart-empty-state">
+      <h3>{noImports ? 'No imported comments yet' : 'No leads match this view'}</h3>
+      <p>{noImports ? 'Start by scanning a newer YouTube video, or load a saved queue if you already imported comments.' : `This view is filtered to ${workTabLabels[workTab].toLowerCase()} with ${freshnessWindow === 'all' ? 'all ages' : `the last ${freshnessWindow} days`}. The batch may have older or lower-score comments.`}</p>
+      <div className="approval-hooks">
+        <button className="workflow-button safe" type="button" onClick={onShowAll}>Show all imported comments</button>
+        <button className="workflow-button" type="button" onClick={onShowStale}>Show stale research leads</button>
+        <button className="workflow-button" type="button" onClick={onImport}>Import a newer video</button>
+      </div>
+    </div>
+  );
+}
+
+function ImportPanel({ onImported }: { onImported: (result: ImportPanelResult) => void }) {
   const [videoUrls, setVideoUrls] = useState('');
   const [maxVideos, setMaxVideos] = useState(3);
   const [maxPages, setMaxPages] = useState(1);
@@ -780,7 +870,8 @@ function ImportPanel({ onImported }: { onImported: (items: ScoredFixture[], mess
     try {
       const body = await apiJson('/api/opportunities?limit=250');
       const items = (body.items || []).map(normaliseImportedOpportunity);
-      onImported(items, `Loaded ${items.length} persisted opportunities.`);
+      const summary = buildImportSummary(items);
+      onImported({ items, message: `Loaded ${items.length} persisted opportunities.`, summary });
       setMessage(`Loaded ${items.length} persisted opportunities.`);
     } catch (error) {
       setMessage(`Backend not reachable yet: ${error instanceof Error ? error.message : 'unknown error'}`);
@@ -799,8 +890,9 @@ function ImportPanel({ onImported }: { onImported: (items: ScoredFixture[], mess
       });
       const opportunities = await apiJson('/api/opportunities?limit=250');
       const items = (opportunities.items || []).map(normaliseImportedOpportunity);
+      const importSummary = buildImportSummary(items, body.run);
       const summary = `Import ${body.run?.status || 'finished'}: ${body.run?.commentsFetched || 0} comments fetched, ${items.length} persisted opportunities available.`;
-      onImported(items, summary);
+      onImported({ items, message: summary, summary: importSummary });
       setMessage(summary);
     } catch (error) {
       setMessage(`Import failed safely: ${error instanceof Error ? error.message : 'unknown error'}`);
@@ -834,8 +926,9 @@ function ImportPanel({ onImported }: { onImported: (items: ScoredFixture[], mess
 function App() {
   const fixtureItems = useMemo(buildItems, []);
   const [importedItems, setImportedItems] = useState<ScoredFixture[]>([]);
-  const [dataSource, setDataSource] = useState<'fixtures' | 'imported' | 'combined'>('fixtures');
-  const allItems = useMemo(() => dataSource === 'fixtures' ? fixtureItems : dataSource === 'imported' ? importedItems : [...importedItems, ...fixtureItems], [fixtureItems, importedItems, dataSource]);
+  const [dataSource, setDataSource] = useState<'fixtures' | 'imported' | 'combined'>('imported');
+  const [showDemoData, setShowDemoData] = useState(false);
+  const allItems = useMemo(() => !showDemoData && dataSource === 'fixtures' ? importedItems : dataSource === 'fixtures' ? fixtureItems : dataSource === 'imported' ? importedItems : [...importedItems, ...fixtureItems], [fixtureItems, importedItems, dataSource, showDemoData]);
   const [selectedId, setSelectedId] = useState(allItems[0]?.id);
   const [status, setStatus] = useState<Status>('all');
   const [scoreBand, setScoreBand] = useState<ScoreBand>('all');
@@ -844,6 +937,9 @@ function App() {
   const [workTab, setWorkTab] = useState<WorkTab>('hot');
   const [nicheProfile, setNicheProfile] = useState<NicheProfile>('affiliate_marketing');
   const [freshnessWindow, setFreshnessWindow] = useState<FreshnessWindow>('14');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [importSummary, setImportSummary] = useState<ImportSummary | undefined>();
+  const [healthConfig, setHealthConfig] = useState<HealthConfig>({});
   const [localStatuses, setLocalStatuses] = useState<Record<string, LocalStatus>>(() => Object.fromEntries(allItems.map((item) => [item.id, item.opportunity.status])));
   const [selectedDrafts, setSelectedDrafts] = useState<Record<string, string>>({});
   const detailRef = React.useRef<HTMLElement | null>(null);
@@ -881,6 +977,10 @@ function App() {
   }
   const selectedStatus = selectedItem ? localStatuses[selectedItem.id] ?? selectedItem.opportunity.status : 'new';
   useEffect(() => { if (!selectedItem && allItems[0]) setSelectedId(allItems[0].id); }, [selectedItem, allItems]);
+  useEffect(() => {
+    apiJson('/api/health').then(setHealthConfig).catch((error) => console.warn('Health check failed safely', error));
+  }, []);
+
   const stats = {
     urgent: allItems.filter((item) => item.score.priority === 'urgent').length,
     consumerQuestions: allItems.filter((item) => item.score.opportunityType === 'consumer_buyer_question').length,
@@ -911,95 +1011,122 @@ function App() {
     <main className="dashboard-shell">
       <section className="hero-panel">
         <div>
-          <span className="eyebrow">Affiliate + consumer dashboard · read-only YouTube import · no posting</span>
-          <h1>YouTube Opportunity Signal Review</h1>
-          <p>Rank affiliate publisher opportunities and consumer buyer questions, inspect the evidence, select safe reply drafts, and move each item through Steve’s manual approval workflow.</p>
+          <span className="eyebrow">The Best Lead System · guided YouTube lead review · no auto-posting</span>
+          <h1>Find fresh YouTube comments worth replying to.</h1>
+          <p>Choose a niche, scan public YouTube comments, review the best leads first, generate safe draft ideas, then copy and post manually only if you approve.</p>
         </div>
         <div className="stats-row">
-          <StatCard label="Comments scored" value={allItems.length} note={dataSource === 'fixtures' ? 'sample data' : 'live/imported'} />
-          <StatCard label="Top signals" value={stats.urgent} note="score + low risk" />
-          <StatCard label="Consumer questions" value={stats.consumerQuestions} note="buyer decisions" />
-          <StatCard label="Safe reply paths" value={stats.safeReplies} note="draft-ready" />
-          <StatCard label="Locally approved" value={stats.approved} note="not posted" />
+          <StatCard label="Saved leads" value={importedItems.length} note="real imported queue" />
+          <StatCard label="Today queue" value={filteredItems.length} note={workTabLabels[workTab]} />
+          <StatCard label="Fresh comments" value={allItems.filter((item) => isFreshForWindow(item, '14')).length} note="last 14 days" />
+          <StatCard label="Draft mode" value={healthConfig.aiDraftsConfigured ? 'AI' : 'Safe'} note={healthConfig.aiDraftsConfigured ? 'AI-powered' : 'template fallback'} />
         </div>
       </section>
 
-      <section className="boundary-strip" aria-label="MVP safety boundary">
-        <strong>Safety boundary:</strong> every approval action is local/in-memory. The app now labels affiliate publisher opportunities separately from consumer buyer questions; it prioritizes fresh comments for manual review and never sends a reply, calls YouTube write endpoints, or contacts an external service.
+      <section className="boundary-strip" aria-label="Safety boundary">
+        <strong>Safety boundary:</strong> read-only YouTube imports, no auto-replies, no posting, no moderation. Steve reviews, copies, edits, and posts manually.
       </section>
 
-      <ImportPanel onImported={(items, message) => {
+      <WorkflowSteps step={importedItems.length ? 'review' : 'import'} importedCount={importedItems.length} selectedItem={selectedItem} />
+
+      <section className="start-panel" aria-label="Start here">
+        <div>
+          <span className="eyebrow">Start here</span>
+          <h2>Today's action queue</h2>
+          <p>Default view shows imported, fresh, score-qualified leads. If it is empty, the batch probably contains older comments or research leads instead of reply-worthy opportunities.</p>
+        </div>
+        <div className="approval-hooks">
+          <button className="workflow-button safe" type="button" onClick={() => { setDataSource('imported'); setWorkTab('hot'); setFreshnessWindow('14'); setStatus('all'); setScoreBand('all'); setOpportunityType('all'); }}>Show today's action queue</button>
+          <button className="workflow-button" type="button" onClick={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }}>Show research leads</button>
+          <button className="workflow-button" type="button" onClick={() => setShowAdvancedFilters((value) => !value)}>{showAdvancedFilters ? 'Hide advanced filters' : 'Advanced filters'}</button>
+        </div>
+      </section>
+
+      <section className="filters niche-profile-filters" aria-label="Niche profile selector">
+        <div>
+          <span>Step 1 · Niche profile</span>
+          {(['affiliate_marketing', 'money_making', 'work_from_home', 'custom'] as NicheProfile[]).map((value) => (
+            <FilterButton key={value} active={nicheProfile === value} value={value} label={nicheProfileLabels[value]} onClick={setNicheProfile} />
+          ))}
+        </div>
+        <small className="workflow-note">Affiliate marketing is active. Other profiles are visible on purpose, but marked coming soon until we add niche-specific scoring rules.</small>
+      </section>
+
+      <ImportPanel onImported={({ items, message, summary }) => {
         setImportedItems(items);
-        setDataSource(items.length ? 'imported' : 'fixtures');
+        setImportSummary(summary);
+        setDataSource(items.length ? 'imported' : 'imported');
+        setWorkTab(summary?.hotCount ? 'hot' : summary?.staleCount ? 'stale' : 'publisher');
+        if (summary?.staleCount && !summary.hotCount) setFreshnessWindow('all');
         setLocalStatuses((current) => ({ ...Object.fromEntries(items.map((item) => [item.id, item.opportunity.status])), ...current }));
         if (items[0]) setSelectedId(items[0].id);
         console.info(message);
       }} />
 
-      <section className="filters niche-profile-filters" aria-label="Niche profile selector">
-        <div>
-          <span>Niche profile</span>
-          {(['affiliate_marketing', 'money_making', 'work_from_home', 'custom'] as NicheProfile[]).map((value) => (
-            <FilterButton key={value} active={nicheProfile === value} value={value} label={nicheProfileLabels[value]} onClick={setNicheProfile} />
-          ))}
-        </div>
-        <small className="workflow-note">Current scoring is tuned for affiliate marketing. These profile buttons are ready for niche-specific rules as we define the list.</small>
-      </section>
+      <ImportSummaryPanel
+        summary={importSummary}
+        onReview={() => { setDataSource('imported'); setWorkTab('hot'); setFreshnessWindow('14'); }}
+        onShowStale={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }}
+      />
 
       <section className="filters work-tabs" aria-label="Review inbox tabs">
         <div>
-          <span>Review inbox</span>
+          <span>Step 3 · Review inbox</span>
           {(['hot', 'buyer', 'publisher', 'content', 'low_fit', 'stale', 'done'] as WorkTab[]).map((value) => (
             <FilterButton key={value} active={workTab === value} value={value} label={workTabLabels[value]} onClick={setWorkTab} />
           ))}
         </div>
       </section>
 
-      <section className="filters freshness-filters" aria-label="Comment freshness filters">
-        <div>
-          <span>Freshness window</span>
-          {(['7', '14', '30', 'all'] as FreshnessWindow[]).map((value) => (
-            <FilterButton key={value} active={freshnessWindow === value} value={value} label={value === 'all' ? 'All ages' : `Last ${value} days`} onClick={setFreshnessWindow} />
-          ))}
-        </div>
-        <small className="workflow-note">Default is 14 days. Older comments are better for research/content ideas than direct replies unless the thread is still active.</small>
-      </section>
+      {showAdvancedFilters && (
+        <>
+          <section className="filters freshness-filters" aria-label="Comment freshness filters">
+            <div>
+              <span>Freshness window</span>
+              {(['7', '14', '30', 'all'] as FreshnessWindow[]).map((value) => (
+                <FilterButton key={value} active={freshnessWindow === value} value={value} label={value === 'all' ? 'All ages' : `Last ${value} days`} onClick={setFreshnessWindow} />
+              ))}
+            </div>
+            <small className="workflow-note">Default is 14 days. Older comments are better for research/content ideas than direct replies unless the thread is still active.</small>
+          </section>
 
-      <section className="filters data-source-filters" aria-label="Data source filters">
-        <div>
-          <span>Data source</span>
-          <FilterButton active={dataSource === 'fixtures'} value="fixtures" label="Sample fixtures" onClick={setDataSource} />
-          <FilterButton active={dataSource === 'imported'} value="imported" label={`Imported (${importedItems.length})`} onClick={setDataSource} />
-          <FilterButton active={dataSource === 'combined'} value="combined" label="Combined" onClick={setDataSource} />
-        </div>
-      </section>
+          <section className="filters data-source-filters" aria-label="Data source filters">
+            <div>
+              <span>Data source</span>
+              <FilterButton active={dataSource === 'imported'} value="imported" label={`Imported (${importedItems.length})`} onClick={setDataSource} />
+              <FilterButton active={dataSource === 'combined'} value="combined" label="Combined" onClick={setDataSource} />
+              <button className="chip" type="button" onClick={() => { setShowDemoData((value) => !value); setDataSource('fixtures'); }}>{showDemoData ? 'Hide demo sample data' : 'Show demo sample data'}</button>
+            </div>
+          </section>
 
-      <section className="filters" aria-label="Dashboard filters">
-        <div>
-          <span>Status</span>
-          {(Object.keys(statusLabels) as Status[]).map((value) => (
-            <FilterButton key={value} active={status === value} value={value} label={statusLabels[value]} onClick={setStatus} />
-          ))}
-        </div>
-        <div>
-          <span>Score</span>
-          {(['all', 'urgent', 'high', 'medium', 'low'] as ScoreBand[]).map((value) => (
-            <FilterButton key={value} active={scoreBand === value} value={value} label={value === 'all' ? 'All scores' : value} onClick={setScoreBand} />
-          ))}
-        </div>
-        <div>
-          <span>Type</span>
-          {(['all', 'affiliate_publisher_opportunity', 'consumer_buyer_question', 'low_fit_comment'] as OpportunityType[]).map((value) => (
-            <FilterButton key={value} active={opportunityType === value} value={value} label={opportunityTypeLabels[value]} onClick={setOpportunityType} />
-          ))}
-        </div>
-        <label>
-          <span>Niche</span>
-          <select value={niche} onChange={(event) => setNiche(event.target.value)}>
-            {niches.map((value) => <option key={value} value={value}>{value === 'all' ? 'All niches' : formatTopic(value)}</option>)}
-          </select>
-        </label>
-      </section>
+          <section className="filters" aria-label="Dashboard filters">
+            <div>
+              <span>Status</span>
+              {(Object.keys(statusLabels) as Status[]).map((value) => (
+                <FilterButton key={value} active={status === value} value={value} label={statusLabels[value]} onClick={setStatus} />
+              ))}
+            </div>
+            <div>
+              <span>Score</span>
+              {(['all', 'urgent', 'high', 'medium', 'low'] as ScoreBand[]).map((value) => (
+                <FilterButton key={value} active={scoreBand === value} value={value} label={value === 'all' ? 'All scores' : value} onClick={setScoreBand} />
+              ))}
+            </div>
+            <div>
+              <span>Type</span>
+              {(['all', 'affiliate_publisher_opportunity', 'consumer_buyer_question', 'low_fit_comment'] as OpportunityType[]).map((value) => (
+                <FilterButton key={value} active={opportunityType === value} value={value} label={opportunityTypeLabels[value]} onClick={setOpportunityType} />
+              ))}
+            </div>
+            <label>
+              <span>Niche</span>
+              <select value={niche} onChange={(event) => setNiche(event.target.value)}>
+                {niches.map((value) => <option key={value} value={value}>{value === 'all' ? 'All niches' : formatTopic(value)}</option>)}
+              </select>
+            </label>
+          </section>
+        </>
+      )}
 
       <section className="workspace-grid">
         <div className="opportunity-list" aria-label="Ranked opportunities">
@@ -1018,7 +1145,7 @@ function App() {
               selected={selectedItem.id === item.id}
               onSelect={() => selectOpportunity(item.id)}
             />
-          )) : <p className="empty-state">No opportunities match this inbox/filter combo. Try Hot leads, load imported data, or loosen the score/type filters.</p>}
+          )) : <SmartEmptyState importedCount={importedItems.length} dataSource={dataSource} workTab={workTab} freshnessWindow={freshnessWindow} onShowAll={() => { setDataSource('imported'); setWorkTab('publisher'); setFreshnessWindow('all'); }} onShowStale={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }} onImport={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />}
         </div>
         {selectedItem && (
           <section ref={detailRef}>

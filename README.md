@@ -24,3 +24,22 @@ npm install
 npm run build
 YOUTUBE_API_KEY=your_key npm start
 ```
+
+
+## Persistent storage on Render
+
+For deployed use, add a Render persistent disk and set:
+
+```text
+IMPORT_STORE_PATH=/var/data/import-store.json
+```
+
+Recommended disk:
+
+```text
+Name: youtube-dashboard-data
+Mount path: /var/data
+Size: 1 GB
+```
+
+See `docs/render-persistent-storage.md`.
