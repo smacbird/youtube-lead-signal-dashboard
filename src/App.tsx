@@ -1082,7 +1082,7 @@ function App() {
     const fresh = isFreshForWindow(item, freshnessWindow);
     const stale = !isFreshForWindow(item, '14');
     const tabMatch = workTab === 'hot'
-      ? !done && fresh && item.score.overallScore >= 45 && item.score.opportunityType !== 'low_fit_comment'
+      ? !done && item.score.overallScore >= 35 && item.score.opportunityType !== 'low_fit_comment'
       : workTab === 'buyer'
         ? !done && fresh && item.score.opportunityType === 'consumer_buyer_question'
         : workTab === 'publisher'
@@ -1157,10 +1157,10 @@ function App() {
         <div>
           <span className="eyebrow">Start here</span>
           <h2>Best Comments to Act on Right Now</h2>
-          <p>Default view shows imported, fresh, score-qualified leads. If it is empty, the batch probably contains older comments or research leads instead of reply-worthy opportunities.</p>
+          <p>Shows the strongest non-done comments from the current scan or previous scan you loaded. Use research leads for older/low-intent comments.</p>
         </div>
         <div className="approval-hooks">
-          <button className="workflow-button safe" type="button" onClick={() => { setDataSource('imported'); setWorkTab('hot'); setFreshnessWindow('14'); setStatus('all'); setScoreBand('all'); setOpportunityType('all'); }}>Show Best Comments</button>
+          <button className="workflow-button safe" type="button" onClick={() => { setDataSource('imported'); setWorkTab('hot'); setFreshnessWindow('all'); setStatus('all'); setScoreBand('all'); setOpportunityType('all'); setNiche('all'); }}>Show Best Comments</button>
           <button className="workflow-button" type="button" onClick={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }}>Show research leads</button>
           <button className="workflow-button" type="button" onClick={() => setShowAdvancedFilters((value) => !value)}>{showAdvancedFilters ? 'Hide advanced filters' : 'Advanced filters'}</button>
         </div>
