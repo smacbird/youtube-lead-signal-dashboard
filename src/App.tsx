@@ -792,13 +792,23 @@ function StandaloneModeGate({ children }: { children: React.ReactNode }) {
 }
 
 
+function apiErrorMessage(body: any, status: number) {
+  const searchMessage = body?.searchErrors?.find((error: any) => error?.message)?.message;
+  const directMessage = body?.error?.message || body?.message;
+  const runMessage = body?.run?.errors?.find((error: any) => error?.message)?.message;
+  const message = searchMessage || directMessage || runMessage || `Request failed: ${status}`;
+  if (/api key not valid/i.test(message)) return 'YouTube API key is not valid. Update YOUTUBE_API_KEY in Render with a valid YouTube Data API v3 key.';
+  if (/quota/i.test(message)) return `YouTube API quota issue: ${message}`;
+  return message;
+}
+
 async function apiJson(path: string, options?: RequestInit) {
   const response = await fetch(path, {
     ...options,
     headers: { 'content-type': 'application/json', ...(options?.headers || {}) },
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body?.error?.message || `Request failed: ${response.status}`);
+  if (!response.ok) throw new Error(apiErrorMessage(body, response.status));
   return body;
 }
 
@@ -954,7 +964,7 @@ function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile;
       onImported({ items, message: summary, summary: importSummary });
       setMessage(`${summary} Estimated quota: ${body.run?.estimatedQuotaUnits || 0} units. Use Previous Scans if you want to see older scans too.`);
     } catch (error) {
-      setMessage(`Niche scan failed safely: ${error instanceof Error ? error.message : 'unknown error'}`);
+      setMessage(`Niche scan could not run: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
       setLoading(false);
     }
