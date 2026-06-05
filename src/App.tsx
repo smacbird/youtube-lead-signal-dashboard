@@ -521,31 +521,13 @@ function ScoreBreakdown({ dimensions }: { dimensions: ScoreDimension[] }) {
   );
 }
 
-function SafetyNotice({ item, localStatus }: { item: ScoredFixture; localStatus: LocalStatus }) {
-  const highRisk = item.score.riskLevel === 'high';
-  return (
-    <section className={highRisk ? 'detail-section safety-notice high-risk' : 'detail-section safety-notice'} aria-label="Safety boundary">
-      <h3>No-posting boundary</h3>
-      <p>
-        This MVP only updates local review state. Approving or marking replied does not call YouTube, send a message, open a URL, or post externally.
-      </p>
-      <ul>
-        <li>Current local state: <strong>{statusLabels[localStatus]}</strong>.</li>
-        <li>Replied means Steve manually handled it elsewhere or simulated the state.</li>
-        <li>Use conservative wording: no guarantees, no private details, no deceptive claims.</li>
-        {highRisk && <li><strong>High risk:</strong> reject or use risk-aware wording unless Steve has a clear reason to proceed.</li>}
-      </ul>
-    </section>
-  );
-}
-
 function WorkflowPanel({ item, localStatus, onTransition }: { item: ScoredFixture; localStatus: LocalStatus; onTransition: (to: LocalStatus) => void }) {
   const options = transitionOptions(localStatus, item.score.riskLevel);
 
   return (
-    <section className="detail-section workflow-panel" aria-label="Local approval workflow">
+    <section className="detail-section workflow-panel" aria-label="Comment Status">
       <div className="section-heading-row">
-        <h3>Local approval workflow</h3>
+        <h3>Comment Status</h3>
         <StatusBadge status={localStatus} />
       </div>
       <p>{statusHelp[localStatus]}</p>
@@ -598,9 +580,6 @@ function DetailPanel({
         </div>
         <span className={`priority ${item.score.priority}`}>{item.score.priority}</span>
       </div>
-
-      <SafetyNotice item={item} localStatus={localStatus} />
-      <WorkflowPanel item={item} localStatus={localStatus} onTransition={onTransition} />
 
       <section className="detail-section source-context">
         <h3>Source context</h3>
@@ -662,6 +641,8 @@ function DetailPanel({
           </>
         ) : <p className="empty-state">No draft shown because this should be rejected or ignored.</p>}
       </section>
+
+      <WorkflowPanel item={item} localStatus={localStatus} onTransition={onTransition} />
 
       <section className="detail-section">
         <h3>Why this scored well</h3>
