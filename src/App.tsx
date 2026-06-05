@@ -1122,6 +1122,21 @@ function App() {
     window.setTimeout(() => filtersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   }
 
+  function resetForNewScan() {
+    setImportedItems([]);
+    setSelectedId(fixtureItems[0]?.id || '');
+    setDataSource('imported');
+    setWorkTab('hot');
+    setFreshnessWindow('30');
+    setStatus('all');
+    setScoreBand('all');
+    setOpportunityType('all');
+    setNiche('all');
+    setImportSummary(undefined);
+    setShowAdvancedFilters(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   async function showBestComments() {
     setDataSource('imported');
     setWorkTab('hot');
@@ -1193,6 +1208,8 @@ function App() {
           <button className="workflow-button safe" type="button" onClick={showBestComments}>Show Best Comments</button>
           <button className="workflow-button" type="button" onClick={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }}>Show Older Research Ideas</button>
           <button className="workflow-button" type="button" onClick={openFilterResults}>Filter Results</button>
+          <button className="workflow-button" type="button" onClick={resetForNewScan}>Reset for New Scan</button>
+          <small className="reset-helper-note">Previous scans will not be deleted.</small>
         </div>
       </section>
 
