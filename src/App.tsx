@@ -1070,6 +1070,7 @@ function App() {
   const [localStatuses, setLocalStatuses] = useState<Record<string, LocalStatus>>(() => Object.fromEntries(allItems.map((item) => [item.id, item.opportunity.status])));
   const [selectedDrafts, setSelectedDrafts] = useState<Record<string, string>>({});
   const detailRef = React.useRef<HTMLElement | null>(null);
+  const filtersRef = React.useRef<HTMLElement | null>(null);
 
   const niches = useMemo(() => ['all', ...Array.from(new Set(allItems.map((item) => item.video.topic))).sort()], [allItems]);
   const filteredItems = useMemo(() => allItems.filter((item) => {
@@ -1115,6 +1116,11 @@ function App() {
     risky: allItems.filter((item) => item.score.riskLevel !== 'low').length,
     approved: allItems.filter((item) => (localStatuses[item.id] ?? item.opportunity.status) === 'approved').length,
   };
+
+  function openFilterResults() {
+    setShowAdvancedFilters(true);
+    window.setTimeout(() => filtersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  }
 
   async function showBestComments() {
     setDataSource('imported');
@@ -1181,12 +1187,12 @@ function App() {
         <div>
           <span className="eyebrow">Start here</span>
           <h2>Best Comments to Act on Right Now</h2>
-          <p>Shows the strongest non-done comments from the current scan or previous scan you loaded. Use research leads for older/low-intent comments.</p>
+          <p>Shows the strongest non-done comments from the current scan or previous scan you loaded. Use older research ideas for older/low-intent comments.</p>
         </div>
         <div className="approval-hooks">
           <button className="workflow-button safe" type="button" onClick={showBestComments}>Show Best Comments</button>
-          <button className="workflow-button" type="button" onClick={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }}>Show research leads</button>
-          <button className="workflow-button" type="button" onClick={() => setShowAdvancedFilters((value) => !value)}>{showAdvancedFilters ? 'Hide advanced filters' : 'Advanced filters'}</button>
+          <button className="workflow-button" type="button" onClick={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }}>Show Older Research Ideas</button>
+          <button className="workflow-button" type="button" onClick={openFilterResults}>Filter Results</button>
         </div>
       </section>
 
@@ -1228,7 +1234,7 @@ function App() {
 
       {showAdvancedFilters && (
         <>
-          <section className="filters freshness-filters" aria-label="Comment freshness filters">
+          <section ref={filtersRef} className="filters freshness-filters" aria-label="Comment freshness filters">
             <div>
               <span>Freshness window</span>
               {(['7', '14', '30', 'all'] as FreshnessWindow[]).map((value) => (
