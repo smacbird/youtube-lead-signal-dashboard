@@ -620,6 +620,50 @@ function DetailPanel({
       <SourceActions item={item} draftText={selectedDraft?.body} onMarkReplied={() => onTransition('replied')} />
 
       <section className="detail-section">
+        <div className="section-heading-row">
+          <h3>Comment Reply Options</h3>
+          <button className="workflow-button safe" type="button" disabled={generatingDrafts} onClick={async () => {
+            setGeneratingDrafts(true);
+            setDraftMessage('Generating safe drafts…');
+            try {
+              await onGenerateDrafts();
+              setDraftMessage('Drafts generated. Review before copying or posting manually.');
+            } catch (error) {
+              setDraftMessage(`Draft generation failed safely: ${error instanceof Error ? error.message : 'unknown error'}`);
+            } finally {
+              setGeneratingDrafts(false);
+            }
+          }}>{generatingDrafts ? 'Generating…' : 'Generate safe draft ideas'}</button>
+        </div>
+        <small className="workflow-note">{draftMessage || 'Draft selection only: no posting. Draft mode appears in the main workflow header.'}</small>
+        {drafts.length ? (
+          <>
+            <div className="draft-tabs" role="tablist" aria-label="Comment Reply Options">
+              {drafts.map((draft) => (
+                <button
+                  aria-selected={selectedDraft?.id === draft.id}
+                  className={selectedDraft?.id === draft.id ? 'draft-tab active' : 'draft-tab'}
+                  key={draft.id}
+                  onClick={() => onSelectDraft(draft.id)}
+                  role="tab"
+                  type="button"
+                >
+                  {replyStyleLabels[draft.style] ?? draft.style}
+                </button>
+              ))}
+            </div>
+            {selectedDraft && (
+              <article className={item.score.riskLevel === 'high' ? 'draft selected-draft high-risk' : 'draft selected-draft'}>
+                <strong>{replyStyleLabels[selectedDraft.style] ?? selectedDraft.style}</strong>
+                <p>{selectedDraft.body}</p>
+                <small>{selectedDraft.complianceNotes.join(' · ')}</small>
+              </article>
+            )}
+          </>
+        ) : <p className="empty-state">No draft shown because this should be rejected or ignored.</p>}
+      </section>
+
+      <section className="detail-section">
         <h3>Why this scored well</h3>
         <p>{item.score.summary}</p>
         <div className="evidence-list">
@@ -645,49 +689,7 @@ function DetailPanel({
         </ul>
       </section>
 
-      <section className="detail-section">
-        <div className="section-heading-row">
-          <h3>Reply draft variants</h3>
-          <button className="workflow-button safe" type="button" disabled={generatingDrafts} onClick={async () => {
-            setGeneratingDrafts(true);
-            setDraftMessage('Generating safe drafts…');
-            try {
-              await onGenerateDrafts();
-              setDraftMessage('Drafts generated. Review before copying or posting manually.');
-            } catch (error) {
-              setDraftMessage(`Draft generation failed safely: ${error instanceof Error ? error.message : 'unknown error'}`);
-            } finally {
-              setGeneratingDrafts(false);
-            }
-          }}>{generatingDrafts ? 'Generating…' : 'Generate safe draft ideas'}</button>
-        </div>
-        <small className="workflow-note">{draftMessage || 'Draft selection only: no posting. Draft mode appears in the main workflow header.'}</small>
-        {drafts.length ? (
-          <>
-            <div className="draft-tabs" role="tablist" aria-label="Reply draft variants">
-              {drafts.map((draft) => (
-                <button
-                  aria-selected={selectedDraft?.id === draft.id}
-                  className={selectedDraft?.id === draft.id ? 'draft-tab active' : 'draft-tab'}
-                  key={draft.id}
-                  onClick={() => onSelectDraft(draft.id)}
-                  role="tab"
-                  type="button"
-                >
-                  {replyStyleLabels[draft.style] ?? draft.style}
-                </button>
-              ))}
-            </div>
-            {selectedDraft && (
-              <article className={item.score.riskLevel === 'high' ? 'draft selected-draft high-risk' : 'draft selected-draft'}>
-                <strong>{replyStyleLabels[selectedDraft.style] ?? selectedDraft.style}</strong>
-                <p>{selectedDraft.body}</p>
-                <small>{selectedDraft.complianceNotes.join(' · ')}</small>
-              </article>
-            )}
-          </>
-        ) : <p className="empty-state">No draft shown because this should be rejected or ignored.</p>}
-      </section>
+
     </aside>
   );
 }
