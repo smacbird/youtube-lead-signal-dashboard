@@ -115,7 +115,7 @@ const workTabLabels: Record<WorkTab, string> = {
 const nicheProfileLabels: Record<NicheProfile, string> = {
   affiliate_marketing: 'Affiliate marketing',
   money_making: 'Money-making opportunities',
-  work_from_home: 'Work at home',
+  work_from_home: 'Work at/from home business',
   side_hustles: 'Side hustles',
   biz_opp: 'Business opportunity / biz opp',
   ai_tools: 'AI tools/software',

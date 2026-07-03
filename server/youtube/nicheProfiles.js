@@ -24,15 +24,15 @@ export const NICHE_PROFILES = {
     ],
   },
   work_from_home: {
-    label: 'Work at home',
-    leadCategory: 'remote/work-from-home opportunity',
-    replyStyle: 'helpful and practical, focus on flexibility, experience requirements, schedule, and legitimacy',
-    keywords: ['work from home', 'remote', 'no experience', 'part time', 'flexible', 'from home', 'stay at home', 'job', 'legit work', 'schedule'],
+    label: 'Work at/from home business',
+    leadCategory: 'home-based business opportunity',
+    replyStyle: 'business-opportunity focused: realistic, practical, no hype, emphasize startup costs, skills, traffic, offer quality, and legitimacy checks',
+    keywords: ['home based business', 'business from home', 'work from home business', 'start from home', 'online business', 'home business opportunity', 'side business', 'business model', 'startup cost', 'legit business'],
     queries: [
-      'work from home jobs no experience',
-      'remote work from home side hustle',
-      'part time work from home jobs',
-      'legit work from home opportunities',
+      'home based business opportunities',
+      'business from home for beginners',
+      'online business ideas from home',
+      'work from home business opportunity',
     ],
   },
   side_hustles: {
