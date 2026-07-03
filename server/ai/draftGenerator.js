@@ -108,7 +108,29 @@ export async function generateReplyDrafts(opportunity) {
 
   const comment = opportunity.comment || {};
   const video = opportunity.video || {};
-  const prompt = `You write safe YouTube comment reply drafts for Steve, an affiliate marketer.\n\nRules:\n- No auto-posting. Steve manually approves/copies/posts.\n- No income guarantees.\n- No fake endorsement or claims not supported by the comment.\n- No private-data requests in public comments.\n- Mention affiliate disclosures when relevant.\n- Keep drafts helpful, natural, and concise.\n\nReturn ONLY JSON array of 3 objects with fields: style, body, complianceNotes. Styles: ai_short_helpful, ai_consultative, ai_content_angle.\n\nVideo title: ${clean(video.title)}\nChannel: ${clean(video.channelName)}\nOpportunity type: ${opportunity.opportunityType}\nRisk: ${opportunity.riskLevel}\nComment author: ${clean(comment.authorDisplayName)}\nComment: ${clean(comment.textOriginal)}`;
+  const prompt = `You write safe YouTube comment reply drafts for Steve, an affiliate marketer building The Best Lead System.
+
+Rules:
+- No auto-posting. Steve manually approves/copies/posts.
+- No income guarantees.
+- No fake endorsement or claims not supported by the comment.
+- No private-data requests in public comments.
+- Mention affiliate disclosures when relevant.
+- Keep drafts helpful, natural, and concise.
+- Match the niche style if provided.
+
+Return ONLY JSON array of 3 objects with fields: style, body, complianceNotes. Styles: ai_short_helpful, ai_consultative, ai_content_angle.
+
+Niche: ${clean(opportunity.nicheProfileLabel || 'Affiliate marketing')}
+Lead category: ${clean(opportunity.nicheLeadCategory || 'general affiliate/buyer intent')}
+Preferred reply style: ${clean(opportunity.nicheReplyStyle || 'practical, concise, helpful')}
+Matched niche keywords: ${(opportunity.nicheMatchedKeywords || []).map(clean).join(', ') || 'none'}
+Video title: ${clean(video.title)}
+Channel: ${clean(video.channelName)}
+Opportunity type: ${opportunity.opportunityType}
+Risk: ${opportunity.riskLevel}
+Comment author: ${clean(comment.authorDisplayName)}
+Comment: ${clean(comment.textOriginal)}`;
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
