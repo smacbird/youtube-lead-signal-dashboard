@@ -2,6 +2,7 @@ import { scoreSampleItem } from '../../src/scoring/scoring.js';
 import { clampImportOptions, IMPORT_LIMITS } from './limits.js';
 import { makeReplyDrafts, makeScoringItem, normalizeCommentThreadFromYouTube, normalizeVideoFromYouTube } from './normalize.js';
 import { parseManyYouTubeVideoInputs } from '../youtube/url.js';
+import { nicheScoreBoost } from '../youtube/nicheProfiles.js';
 import {
   createImportRun,
   finishImportRun,
@@ -69,13 +70,27 @@ export async function importYouTubeVideos({ inputs, options = {}, store, youtube
 
             const scoringItem = makeScoringItem(video, upsert.record);
             const score = scoreSampleItem(scoringItem);
+            const profileId = metadata.profileId || options.profileId || null;
+            const combinedText = `${video.title || ''} ${upsert.record.textOriginal || ''}`;
+            const nicheBoost = profileId ? nicheScoreBoost(profileId, combinedText) : { boost: 0, matched: [], profile: null };
+            const boostedScore = Math.min(100, Math.max(0, (score.overallScore || 0) + nicheBoost.boost));
             const opportunityId = `opp_${upsert.record.id}`;
             const opportunity = {
               ...score,
+              overallScore: boostedScore,
+              priority: boostedScore >= 80 ? 'urgent' : boostedScore >= 65 ? 'high' : boostedScore >= 40 ? 'medium' : 'low',
               id: opportunityId,
               videoId: video.id,
               commentId: upsert.record.id,
               sourceType: 'youtube_import',
+              nicheProfileId: profileId,
+              nicheProfileLabel: nicheBoost.profile?.label || metadata.profileLabel || null,
+              nicheLeadCategory: nicheBoost.profile?.leadCategory || null,
+              nicheReplyStyle: nicheBoost.profile?.replyStyle || null,
+              nicheMatchedKeywords: nicheBoost.matched,
+              nicheScoreBoost: nicheBoost.boost,
+              evidenceSnippets: nicheBoost.matched.length ? [...(score.evidenceSnippets || []), `Niche match: ${nicheBoost.matched.slice(0, 4).join(', ')}`] : score.evidenceSnippets,
+              summary: nicheBoost.boost ? `${score.summary} Niche fit boost: ${nicheBoost.matched.slice(0, 4).join(', ')}.` : score.summary,
               opportunityType: score.opportunityType || (score.scoreDimensions?.some((dimension) => ['affiliateRelevance', 'affiliatePublisherSignal'].includes(dimension.dimension) && dimension.score >= 60)
                 ? 'affiliate_publisher_opportunity'
                 : 'consumer_buyer_question'),

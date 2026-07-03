@@ -124,10 +124,11 @@ async function scanNiche({ body, store, youtubeClient }) {
       maxPagesPerVideo: body.maxPagesPerVideo || body.maxPages || 1,
       maxCommentsPerRun: body.maxCommentsPerRun || body.maxComments || 250,
       maxResultsPerPage: body.maxResultsPerPage || body.maxCommentsPerVideo || 50,
+      profileId,
     },
     store,
     youtubeClient,
-    metadata: { scanType: 'niche', profileId, profileLabel: profile.label, queries, daysBack, maxVideos, order: body.order || 'relevance' },
+    metadata: { scanType: 'niche', profileId, profileLabel: profile.label, queries, daysBack, maxVideos, order: body.order || 'relevance', profileId, profileLabel: profile.label },
   });
   run.estimatedQuotaUnits += estimatedSearchQuotaUnits;
   run.title = formatScanTitle({ profileLabel: profile.label, daysBack, maxVideos, commentsFetched: run.commentsFetched, startedAt: run.startedAt });
@@ -151,12 +152,49 @@ async function scanNiche({ body, store, youtubeClient }) {
   };
 }
 
+
+function csvEscape(value) {
+  const text = String(value ?? '');
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function opportunitiesToCsv(items) {
+  const rows = [
+    ['score', 'type', 'priority', 'risk', 'status', 'video', 'commenter', 'comment', 'url', 'niche'],
+    ...items.map((item) => [
+      item.overallScore,
+      item.opportunityTypeLabel,
+      item.priority,
+      item.riskLevel,
+      item.status,
+      item.video?.title,
+      item.comment?.authorDisplayName,
+      item.comment?.textOriginal,
+      item.comment?.url,
+      item.nicheProfileLabel,
+    ]),
+  ];
+  return rows.map((row) => row.map(csvEscape).join(',')).join('\n');
+}
+
 async function handle(request, response) {
   const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
 
   try {
     if (request.method === 'GET' && url.pathname === '/api/health') {
       sendJson(response, 200, { ok: true, youtubeApiKeyConfigured: Boolean(process.env.YOUTUBE_API_KEY), aiDraftsConfigured: Boolean(process.env.OPENAI_API_KEY), aiDraftProvider: process.env.OPENAI_API_KEY ? 'openai' : 'server_fallback' });
+      return;
+    }
+
+
+    if (request.method === 'GET' && url.pathname === '/api/export/opportunities.csv') {
+      const items = await store.listOpportunities({ limit: url.searchParams.get('limit') || 500 });
+      response.writeHead(200, {
+        'content-type': 'text/csv; charset=utf-8',
+        'content-disposition': 'attachment; filename="best-lead-system-opportunities.csv"',
+        'cache-control': 'no-store',
+      });
+      response.end(opportunitiesToCsv(items));
       return;
     }
 

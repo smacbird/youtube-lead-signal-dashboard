@@ -14,7 +14,8 @@ type NicheProfile = 'affiliate_marketing' | 'money_making' | 'work_from_home' | 
 type FreshnessWindow = '7' | '14' | '30' | 'all';
 type WorkflowStep = 'start' | 'import' | 'review' | 'draft';
 type HealthConfig = { ok?: boolean; youtubeApiKeyConfigured?: boolean; aiDraftsConfigured?: boolean; aiDraftProvider?: string };
-type ImportSummary = { status: string; commentsFetched: number; commentsInserted: number; estimatedQuotaUnits: number; totalPersisted: number; freshCount: number; staleCount: number; hotCount: number; publisherCount: number; buyerCount: number; lowFitCount: number };
+type ImportSummary = { status: string; commentsFetched: number; commentsInserted: number; estimatedQuotaUnits: number; totalPersisted: number; freshCount: number; staleCount: number; hotCount: number; publisherCount: number; buyerCount: number; lowFitCount: number; videosFound?: number; bestLeadsFound?: number };
+type AppSettings = { defaultScanDepth: number; defaultFreshnessDays: number; replyTone: string; enabledNiches: NicheProfile[] };
 type ImportPanelResult = { items: ScoredFixture[]; message: string; summary?: ImportSummary };
 type PreviousScan = { id: string; title?: string; status: string; commentsFetched: number; commentsInserted: number; estimatedQuotaUnits: number; startedAt: string; completedAt?: string; metadata?: Record<string, any> };
 
@@ -193,7 +194,7 @@ function isFreshForWindow(item: ScoredFixture, windowDays: FreshnessWindow) {
   return days <= Number(windowDays);
 }
 
-function buildImportSummary(items: ScoredFixture[], run?: any): ImportSummary {
+function buildImportSummary(items: ScoredFixture[], run?: any, extras: Partial<ImportSummary> = {}): ImportSummary {
   return {
     status: run?.status || 'loaded',
     commentsFetched: Number(run?.commentsFetched || items.length || 0),
@@ -206,6 +207,8 @@ function buildImportSummary(items: ScoredFixture[], run?: any): ImportSummary {
     publisherCount: items.filter((item) => item.score.opportunityType === 'affiliate_publisher_opportunity').length,
     buyerCount: items.filter((item) => item.score.opportunityType === 'consumer_buyer_question').length,
     lowFitCount: items.filter((item) => item.score.opportunityType === 'low_fit_comment').length,
+    videosFound: extras.videosFound,
+    bestLeadsFound: extras.bestLeadsFound ?? items.filter((item) => item.score.overallScore >= 40 && item.score.opportunityType !== 'low_fit_comment').length,
   };
 }
 
@@ -249,6 +252,40 @@ function copyBundleText(item: ScoredFixture, draftText?: string) {
     draftText ? `Draft reply: ${draftText}` : '',
   ].filter(Boolean).join('\n\n');
 }
+
+function csvEscape(value: unknown) {
+  const text = String(value ?? '');
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function exportOpportunitiesCsv(items: ScoredFixture[]) {
+  const rows = [
+    ['score', 'type', 'priority', 'risk', 'status', 'age', 'video', 'commenter', 'comment', 'url'],
+    ...items.map((item) => [
+      item.score.overallScore,
+      item.score.opportunityTypeLabel,
+      item.score.priority,
+      item.score.riskLevel,
+      item.opportunity.status,
+      ageLabel(item),
+      item.video.title,
+      item.comment.authorDisplayName,
+      item.comment.textOriginal,
+      makeYouTubeCommentUrl(item),
+    ]),
+  ];
+  const csv = rows.map((row) => row.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `best-lead-system-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 
 function draftForStyle(item: ScoredFixture, style: DraftStyle): ReplyDraft {
   const topic = safeTopic(item);
@@ -825,10 +862,11 @@ function ImportSummaryPanel({ summary, onReview, onShowStale }: { summary?: Impo
         <strong>{summary.totalPersisted} opportunities shown</strong>
       </div>
       <div className="summary-grid">
+        <StatCard label="Videos found" value={summary.videosFound ?? '—'} note="scan quality" />
         <StatCard label="Comments scanned" value={summary.commentsFetched} note="from YouTube" />
         <StatCard label="Fresh leads" value={summary.freshCount} note="last 14 days" />
         <StatCard label="Stale research" value={summary.staleCount} note="older than 14 days" />
-        <StatCard label="Hot leads" value={summary.hotCount} note="fresh + score filter" />
+        <StatCard label="Best leads found" value={summary.bestLeadsFound ?? summary.hotCount} note="score-qualified" />
         <StatCard label="Publisher questions" value={summary.publisherCount} note="affiliate/site owner" />
         <StatCard label="Buyer questions" value={summary.buyerCount} note="product decisions" />
       </div>
@@ -856,17 +894,18 @@ function SmartEmptyState({ importedCount, dataSource, workTab, freshnessWindow, 
   );
 }
 
-function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile; onImported: (result: ImportPanelResult) => void }) {
+function ImportPanel({ nicheProfile, settings, onImported }: { nicheProfile: NicheProfile; settings: AppSettings; onImported: (result: ImportPanelResult) => void }) {
   const [videoUrls, setVideoUrls] = useState('');
   const [maxVideos, setMaxVideos] = useState(3);
   const [maxPages, setMaxPages] = useState(1);
   const [maxCommentsPerVideo, setMaxCommentsPerVideo] = useState(100);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('Start by scanning a niche, or open Previous Scans from earlier imports.');
-  const [scanDepth, setScanDepth] = useState(5);
-  const [daysBack, setDaysBack] = useState(30);
+  const [scanDepth, setScanDepth] = useState(settings.defaultScanDepth);
+  const [daysBack, setDaysBack] = useState(settings.defaultFreshnessDays);
   const [scanMode, setScanMode] = useState<'niche' | 'manual'>('niche');
   const [previousScans, setPreviousScans] = useState<PreviousScan[]>([]);
+  useEffect(() => { setScanDepth(settings.defaultScanDepth); setDaysBack(settings.defaultFreshnessDays); }, [settings.defaultScanDepth, settings.defaultFreshnessDays]);
 
   async function loadPreviousScans() {
     setLoading(true);
@@ -935,12 +974,13 @@ function ImportPanel({ nicheProfile, onImported }: { nicheProfile: NicheProfile;
           maxVideos: scanDepth,
           daysBack,
           maxPagesPerVideo: maxPages,
+          replyTone: settings.replyTone,
           maxCommentsPerRun: maxCommentsPerVideo,
           maxResultsPerPage: Math.min(100, maxCommentsPerVideo),
         }),
       });
       const items = (body.items || []).map(normaliseImportedOpportunity);
-      const importSummary = buildImportSummary(items, body.run);
+      const importSummary = buildImportSummary(items, body.run, { videosFound: body.videosFound?.length || 0 });
       const summary = `Niche scan complete: ${body.videosFound?.length || 0} videos found, ${body.run?.commentsFetched || 0} comments scanned, ${items.length} current-scan opportunities shown.`;
       onImported({ items, message: summary, summary: importSummary });
       setMessage(`${summary} Estimated quota: ${body.run?.estimatedQuotaUnits || 0} units. Use Previous Scans if you want to see older scans too.`);
@@ -1060,6 +1100,8 @@ function App() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [importSummary, setImportSummary] = useState<ImportSummary | undefined>();
   const [healthConfig, setHealthConfig] = useState<HealthConfig>({});
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>(() => ({ defaultScanDepth: 5, defaultFreshnessDays: 30, replyTone: 'Helpful, concise, practical', enabledNiches: ['affiliate_marketing', 'money_making', 'work_from_home', 'side_hustles', 'biz_opp', 'ai_tools', 'traffic_leads', 'organic_traffic'] }));
   const [localStatuses, setLocalStatuses] = useState<Record<string, LocalStatus>>(() => Object.fromEntries(allItems.map((item) => [item.id, item.opportunity.status])));
   const [selectedDrafts, setSelectedDrafts] = useState<Record<string, string>>({});
   const detailRef = React.useRef<HTMLElement | null>(null);
@@ -1202,9 +1244,36 @@ function App() {
           <button className="workflow-button" type="button" onClick={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }}>Show Older Research Ideas</button>
           <button className="workflow-button" type="button" onClick={openFilterResults}>Filter Results</button>
           <button className="workflow-button" type="button" onClick={resetForNewScan}>Reset for New Scan</button>
+          <button className="workflow-button" type="button" onClick={() => setShowSettings((value) => !value)}>Settings</button>
+          <button className="workflow-button" type="button" onClick={() => exportOpportunitiesCsv(filteredItems.length ? filteredItems : importedItems)}>Export CSV</button>
           <small className="reset-helper-note">Previous scans will not be deleted.</small>
         </div>
       </section>
+
+      {showSettings && (
+        <section className="settings-panel" aria-label="Dashboard settings">
+          <div>
+            <span className="eyebrow">Settings</span>
+            <h2>Default scan and reply settings</h2>
+            <p>These settings affect the next scan you run in this browser. They do not delete or change previous scans.</p>
+          </div>
+          <div className="settings-grid">
+            <label><span>Default scan depth</span><select value={settings.defaultScanDepth} onChange={(event) => setSettings((current) => ({ ...current, defaultScanDepth: Number(event.target.value) }))}>
+              <option value={5}>Quick · 5 videos</option>
+              <option value={10}>Standard · 10 videos</option>
+              <option value={25}>Deep · 25 videos</option>
+            </select></label>
+            <label><span>Default freshness window</span><select value={settings.defaultFreshnessDays} onChange={(event) => setSettings((current) => ({ ...current, defaultFreshnessDays: Number(event.target.value) }))}>
+              <option value={7}>Last 7 days</option>
+              <option value={14}>Last 14 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 90 days</option>
+            </select></label>
+            <label><span>Reply tone</span><input value={settings.replyTone} onChange={(event) => setSettings((current) => ({ ...current, replyTone: event.target.value }))} /></label>
+          </div>
+          <small className="workflow-note">Niche-specific scoring and OpenAI reply prompts are now active. More detailed per-niche tuning can be added as we learn which scans perform best.</small>
+        </section>
+      )}
 
       <section className="filters niche-profile-filters" aria-label="Niche profile selector">
         <div>
@@ -1216,7 +1285,7 @@ function App() {
         <small className="workflow-note">These profiles now drive the YouTube search query bundle. Scoring is still strongest for affiliate/buyer intent and will get more niche-specific in later passes.</small>
       </section>
 
-      <ImportPanel nicheProfile={nicheProfile} onImported={({ items, message, summary }) => {
+      <ImportPanel nicheProfile={nicheProfile} settings={settings} onImported={({ items, message, summary }) => {
         setImportedItems(items);
         setImportSummary(summary);
         setDataSource(items.length ? 'imported' : 'imported');
