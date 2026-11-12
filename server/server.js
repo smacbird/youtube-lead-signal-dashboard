@@ -103,7 +103,7 @@ function opportunitiesToCsv(items) {
   return rows.map((row) => row.map(csvEscape).join(',')).join('\n');
 }
 
-const LOGIN_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Best Lead System AI sign in</title></head><body><main><h1>Best Lead System AI</h1><form action="/login" method="post"><label>Owner password <input type="password" name="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form></main></body></html>`;
+const LOGIN_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Best Leads System AI sign in</title></head><body><main><h1>Best Leads System AI</h1><form action="/login" method="post"><label>Owner password <input type="password" name="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form></main></body></html>`;
 
 async function handle(request, response) {
   const url = new URL(request.url, 'http://localhost');
@@ -325,5 +325,5 @@ async function handle(request, response) {
 }
 
 createServer(handle).listen(PORT, '0.0.0.0', () => {
-  console.log(`Best Lead System listening on port ${PORT}`);
+  console.log(`Best Leads System AI listening on port ${PORT}`);
 });

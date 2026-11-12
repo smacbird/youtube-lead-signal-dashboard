@@ -954,3 +954,50 @@ h2[tabindex="-1"]:focus { outline: none; }
 .brand strong { font-size: 1.7rem; letter-spacing: 0.01em; line-height: 1.15; }
 .header-reset { border-color: var(--gold, #d4a84b); color: var(--gold, #d4a84b); font-weight: 700; }
 @media (max-width: 560px) { .brand strong { font-size: 1.4rem; } }
+
+/* Round 5: larger sticky header, left tools sidebar, robust two-column layout. */
+.app-header { padding: 18px 24px; gap: 18px; }
+.brand strong { font-size: 2.1rem; line-height: 1.1; }
+.brand span { font-size: 0.95rem; }
+.menu-toggle { display: none; }
+.app-body { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 18px; }
+.app-main { min-width: 0; max-width: 1240px; width: 100%; }
+.app-sidebar { position: sticky; top: 112px; max-height: calc(100vh - 128px); overflow-y: auto; overflow-x: hidden; padding: 12px; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); }
+.sidebar-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sidebar-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 11px 12px; border: 1px solid transparent; border-radius: 14px; background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.sidebar-item:hover:not(:disabled) { background: rgba(248, 241, 223, 0.06); border-color: var(--line); }
+.sidebar-item.selected { background: rgba(246, 200, 95, 0.12); border-color: var(--gold); }
+.sidebar-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.sidebar-item > span:first-child { flex: 1; }
+.sidebar-caret { color: var(--muted); font-weight: 400; }
+.sidebar-count { min-width: 1.6em; padding: 1px 7px; border-radius: 999px; background: var(--mint); color: var(--ink); font-size: 0.78rem; font-weight: 800; text-align: center; }
+.sidebar-hint { display: block; padding: 0 12px 4px; color: var(--muted); font-size: 0.8rem; }
+.sidebar-panel { margin: 6px 0 10px; padding: 12px; border-radius: 14px; background: rgba(0, 0, 0, 0.16); }
+.sidebar-panel .previous-scans-list { max-height: 50vh; overflow-y: auto; }
+.sidebar-panel .previous-scan-title { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.sidebar-panel textarea { width: 100%; min-height: 110px; }
+.sidebar-options { grid-template-columns: 1fr; }
+.sidebar-status { padding: 0 6px; }
+.options-summary { margin: 10px 0 0; }
+.link-button { border: 0; padding: 0; background: none; color: var(--gold); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; text-align: left; }
+.step-section, .reply-step, #step-4 { scroll-margin-top: 120px; }
+html, body { overflow-x: hidden; }
+
+@media (max-width: 900px) {
+  .app-body { grid-template-columns: 1fr; }
+  .menu-toggle { display: inline-flex; }
+  .app-sidebar { display: none; position: fixed; top: auto; left: 12px; right: 12px; z-index: 30; max-height: 70vh; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5); }
+  .app-sidebar.open { display: block; }
+  .app-header .menu-toggle { justify-self: start; }
+}
+@media (max-width: 560px) {
+  .brand strong { font-size: 1.6rem; }
+  .app-header { padding: 14px 16px; }
+  .step-section, .reply-step, #step-4 { scroll-margin-top: 150px; }
+}
+/* Menu toggle is hidden on desktop, so the header keeps its 3 visible columns there. */
+@media (min-width: 901px) { .app-header { grid-template-columns: minmax(260px, 1fr) auto minmax(260px, 1fr); } }
+@media (max-width: 900px) { .app-header { grid-template-columns: auto 1fr auto; } .header-menu { grid-column: 1 / -1; } }
+@media (max-width: 560px) { .app-header { grid-template-columns: auto 1fr; } .header-leads { grid-column: 1 / -1; } }
+@media (max-width: 900px) { .app-sidebar { top: 96px; } }
+@media (max-width: 560px) { .app-sidebar { top: 132px; } }

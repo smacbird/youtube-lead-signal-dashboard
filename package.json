@@ -13,7 +13,7 @@
     "start": "node server/server.js",
     "check:security": "node scripts/check-security.mjs",
     "check:niche": "node scripts/check-niche-scoring.mjs",
-    "check:scan": "node scripts/check-scan-results.mjs",
+    "check:scan": "node scripts/check-scan-results.mjs && node scripts/check-scan-options.mjs",
     "check:drafts": "node scripts/check-draft-prompt.mjs && node scripts/check-draft-selection.mjs"
   },
   "dependencies": {

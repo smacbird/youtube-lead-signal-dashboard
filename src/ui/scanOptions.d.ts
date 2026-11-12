@@ -1,0 +1,15 @@
+import type { ScanPreset } from './scanPresets.js';
+export type ScanOptions = { presetId: ScanPreset['id']; daysBack: number; commentCap: number; manualPages: number };
+export declare const VIDEO_AGE_CHOICES: number[];
+export declare const MIN_COMMENTS: number;
+export declare const MAX_COMMENTS: number;
+export declare function defaultScanOptions(settings?: { defaultScanDepth?: number; defaultFreshnessDays?: number }): ScanOptions;
+export declare function presetFor(options: ScanOptions): ScanPreset;
+export declare function withPreset(options: ScanOptions, presetId: string): ScanOptions;
+export declare function withDaysBack(options: ScanOptions, days: number): ScanOptions;
+export declare function withCommentCap(options: ScanOptions, cap: number): ScanOptions;
+export declare function withManualPages(options: ScanOptions, pages: number): ScanOptions;
+export declare function scanOptionsSummary(options: ScanOptions): string;
+export declare function nicheScanBody(options: ScanOptions, profileId: string, replyTone: string): Record<string, unknown>;
+export declare function parseVideoLinks(text: string): string[];
+export declare function manualImportBody(options: ScanOptions, text: string): { videoUrls: string[]; maxVideos: number; maxPagesPerVideo: number; maxCommentsPerRun: number; maxResultsPerPage: number };

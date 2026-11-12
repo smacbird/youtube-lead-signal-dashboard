@@ -11,11 +11,12 @@ export const STEPS = [
 
 const stateText: Record<StepState, string> = { done: 'Finished', current: 'You are here', upcoming: 'Next' };
 
-export function AppHeader({ leadCount, onSettings, settingsOpen, onExport, exportDisabled, onSignOut, onReset }: { leadCount: number | null; onSettings: () => void; settingsOpen: boolean; onExport: () => void; exportDisabled: boolean; onSignOut: () => void; onReset: () => void }) {
+export function AppHeader({ leadCount, onSettings, settingsOpen, onSignOut, onReset, menuOpen, onToggleMenu }: { leadCount: number | null; onSettings: () => void; settingsOpen: boolean; onSignOut: () => void; onReset: () => void; menuOpen: boolean; onToggleMenu: () => void }) {
   return (
     <header className="app-header">
+      <button type="button" className="header-button menu-toggle" aria-expanded={menuOpen} aria-controls="app-sidebar" onClick={onToggleMenu}>{menuOpen ? 'Close menu' : 'Menu'}</button>
       <div className="brand">
-        <strong>Best Lead System AI</strong>
+        <strong>Best Leads System AI</strong>
         <span>Find people on YouTube asking for help, and reply to them yourself.</span>
       </div>
       {leadCount !== null && (
@@ -24,7 +25,6 @@ export function AppHeader({ leadCount, onSettings, settingsOpen, onExport, expor
       <nav className="header-menu" aria-label="Account and tools">
         <button type="button" className="header-button header-reset" onClick={onReset} title="Clear this screen and start over. Saved scans are kept.">Reset for new scan</button>
         <button type="button" className="header-button" aria-expanded={settingsOpen} aria-controls="settings-panel" onClick={onSettings}>Settings</button>
-        <button type="button" className="header-button" onClick={onExport} disabled={exportDisabled} title={exportDisabled ? 'Run or load a scan first' : 'Download the comments shown in Step 3'}>Export CSV</button>
         <button type="button" className="header-button" onClick={onSignOut}>Sign out</button>
       </nav>
     </header>

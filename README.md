@@ -1,6 +1,6 @@
-# YouTube Lead Signal Dashboard
+# Best Leads System AI
 
-Read-only YouTube comment import and review dashboard for affiliate marketing opportunities.
+Best Leads System AI finds people asking for help in public YouTube comments, scores them as leads and helps you write replies you post yourself. YouTube access is read-only.
 
 ## Safety boundary
 
@@ -47,6 +47,8 @@ AUTH_ORIGIN=http://127.0.0.1:4174 OWNER_PASSWORD='local-dev-password-at-least-16
 - Tests: `npm run check:niche`, `npm run check:scan`, and `npm run check:drafts` (offline; mock YouTube client, temp store, no paid calls).
 
 ## Dashboard layout
+
+**Sidebar:** a left tools sidebar (a Menu button on phones; Escape closes it) holds, in order: Open a saved scan (load/delete, with a count badge), Advanced: scan specific videos (paste links), Export CSV (disabled until a scan is loaded) and More options (video age, most comments to read). Step 2 keeps only the scan sizes, the main button and a one-line options summary that opens More options. The options live in one shared object (`src/ui/scanOptions.js`, tested by `scripts/check-scan-options.mjs`, part of `check:scan`), so the scan always uses what the sidebar shows. The header keeps Settings, Reset for new scan and Sign out.
 
 **Reply drafts:** Imports never create copyable template replies. Older saved template drafts remain in storage for history but are hidden and cannot be selected for a reply. Opening an open Best/Maybe lead requests OpenAI reply ideas once after a short pause; existing AI drafts are reused, and **Write fresh ideas** asks for new ones. Without an OpenAI key or if generation fails, the app shows a plain error, and Copy reply, Copy full summary and Reply ready stay disabled. Video ideas are not copyable as comment replies. Steve reviews and posts any AI draft himself.
 

@@ -13,6 +13,8 @@ import { ReplyPanel } from './ui/replyStep';
 import { AgeFilter, EmptyList, LeadCard, ReviewTabs } from './ui/reviewStep';
 import { ScanPanel, ScanResultCard, type ScanResult } from './ui/scanStep';
 import { SettingsPanel } from './ui/settings';
+import { Sidebar, type SidebarPanel } from './ui/sidebar';
+import { defaultScanOptions, type ScanOptions } from './ui/scanOptions.js';
 import type { AppSettings, FixtureItem, FreshnessWindow, HealthConfig, LocalStatus, NicheProfile, OpportunityType, ReviewTab, ScanSummary, ScoreBand, ScoredFixture, Status } from './ui/types';
 import './styles.css';
 
@@ -53,6 +55,9 @@ function App() {
   const [healthConfig, setHealthConfig] = useState<HealthConfig>({});
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({ defaultScanDepth: 5, defaultFreshnessDays: 30, replyTone: 'Helpful, concise, practical', enabledNiches: ALL_NICHES });
+  const [scanOptions, setScanOptions] = useState<ScanOptions>(() => defaultScanOptions({ defaultScanDepth: 5, defaultFreshnessDays: 30 }));
+  const [sidebarPanel, setSidebarPanel] = useState<SidebarPanel | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const replyRef = useRef<HTMLDivElement | null>(null);
   const attemptedAutoDrafts = useRef(new Set<string>());
   const draftQueue = useRef<Promise<unknown>>(Promise.resolve());
@@ -261,14 +266,30 @@ function App() {
         leadCount={items.length && !isDemo && (nicheLeadCount || summary?.source === 'scan') ? nicheLeadCount : null}
         onSettings={() => setShowSettings((value) => !value)}
         settingsOpen={showSettings}
-        onExport={() => exportOpportunitiesCsv(visible.length ? visible : items, statuses)}
-        exportDisabled={!items.length}
         onSignOut={signOut}
         onReset={resetForNewScan}
+        menuOpen={sidebarOpen}
+        onToggleMenu={() => setSidebarOpen((value) => !value)}
       />
-      {showSettings && <SettingsPanel settings={settings} onChange={setSettings} onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsPanel settings={settings} onChange={(next) => {
+        setSettings(next);
+        // Settings set the starting choices; apply them to the next scan straight away.
+        setScanOptions((current) => ({ ...defaultScanOptions(next), manualPages: current.manualPages }));
+      }} onClose={() => setShowSettings(false)} />}
 
-      <main>
+      <div className="app-body">
+      <Sidebar
+        openPanel={sidebarPanel}
+        onOpenPanel={setSidebarPanel}
+        mobileOpen={sidebarOpen}
+        onMobileClose={() => setSidebarOpen(false)}
+        options={scanOptions}
+        onOptionsChange={setScanOptions}
+        onResult={applyResult}
+        onExport={() => exportOpportunitiesCsv(visible.length ? visible : items, statuses)}
+        exportDisabled={!items.length}
+      />
+      <main className="app-main">
         <h1 className="visually-hidden">Find and reply to YouTube leads</h1>
         <StepProgress states={stepStates} activeStep={expandedStep} onNavigate={(n) => { setExpandedStep(n); window.setTimeout(() => scrollToStep(n), 0); }} />
 
@@ -286,7 +307,9 @@ function App() {
           summary={`Scan: ${summary?.headline || `${items.length} comments loaded`}`}
           onChange={() => { setExpandedStep(2); scrollToStep(2); }}
           help={`Pick a size and press the button. We read public comments on recent ${nichePhrase(niche)} videos; nothing is posted.`}>
-          <ScanPanel niche={niche} settings={settings} onResult={applyResult} onReset={resetForNewScan} hasResults={items.length > 0} />
+          <ScanPanel niche={niche} settings={settings} options={scanOptions} onOptionsChange={setScanOptions}
+            onOpenOptions={() => { setSidebarPanel('options'); setSidebarOpen(true); window.setTimeout(() => document.querySelector<HTMLElement>('#sidebar-panel-options select')?.focus(), 50); }}
+            onResult={applyResult} hasResults={items.length > 0} />
         </StepSection>
 
         <StepSection n={3} state={expandedStep === 3 ? 'current' : stepStates[2]} collapsed={stepStates[2] === 'done' && expandedStep !== 3}
@@ -358,6 +381,7 @@ function App() {
           </StepSection>
         </div>
       </main>
+      </div>
     </div>
   );
 }
@@ -380,7 +404,7 @@ function StandaloneModeGate({ children }: { children: React.ReactNode }) {
     <main className="standalone-only-shell">
       <section className="standalone-only-card">
         <span className="eyebrow">Open in its own tab</span>
-        <h1>Open Best Lead System AI in a normal browser tab</h1>
+        <h1>Open Best Leads System AI in a normal browser tab</h1>
         <p>YouTube links do not work inside an embedded preview, so this app only runs in its own tab.</p>
         <div className="standalone-actions big">
           <button className="source-button primary" type="button" onClick={leaveIframe}>Open in a new tab</button>
