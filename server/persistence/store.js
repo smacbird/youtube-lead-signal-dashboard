@@ -91,7 +91,10 @@ export class JsonImportStore {
 
       const removed = { videos: 0, comments: 0, opportunities: 0, drafts: 0, scoreDimensions: 0, statusHistory: 0 };
       if (cascade) {
-        const youtubeVideoIds = new Set(run.requestedVideoIds || []);
+        const sharedVideoIds = new Set(Object.values(store.importRuns || {})
+          .filter((other) => other.id !== runId)
+          .flatMap((other) => other.requestedVideoIds || []));
+        const youtubeVideoIds = new Set((run.requestedVideoIds || []).filter((id) => !sharedVideoIds.has(id)));
         const internalVideoIds = new Set();
         for (const [videoId, video] of Object.entries(store.videos || {})) {
           if (youtubeVideoIds.has(video.youtubeVideoId || video.id || videoId)) internalVideoIds.add(videoId);

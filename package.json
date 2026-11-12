@@ -10,7 +10,8 @@
     "check:scoring": "node scripts/check-scoring.mjs",
     "dev:server": "node server/server.js",
     "check:import": "node scripts/check-import.mjs",
-    "start": "node server/server.js"
+    "start": "node server/server.js",
+    "check:security": "node scripts/check-security.mjs"
   },
   "dependencies": {
     "@types/react": "latest",

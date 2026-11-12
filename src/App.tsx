@@ -820,11 +820,17 @@ function apiErrorMessage(body: any, status: number) {
   return message;
 }
 
+let csrfToken = '';
+
 async function apiJson(path: string, options?: RequestInit) {
   const response = await fetch(path, {
     ...options,
-    headers: { 'content-type': 'application/json', ...(options?.headers || {}) },
+    headers: { 'content-type': 'application/json', ...(options?.method && options.method !== 'GET' ? { 'x-csrf-token': csrfToken } : {}), ...(options?.headers || {}) },
   });
+  if (response.status === 401) {
+    window.location.assign('/login');
+    throw new Error('Session expired. Sign in again.');
+  }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(apiErrorMessage(body, response.status));
   return body;
@@ -1141,7 +1147,7 @@ function App() {
   const selectedStatus = selectedItem ? localStatuses[selectedItem.id] ?? selectedItem.opportunity.status : 'new';
   useEffect(() => { if (!selectedItem && allItems[0]) setSelectedId(allItems[0].id); }, [selectedItem, allItems]);
   useEffect(() => {
-    apiJson('/api/health').then(setHealthConfig).catch((error) => console.warn('Health check failed safely', error));
+    apiJson('/api/config').then(setHealthConfig).catch((error) => console.warn('Configuration check failed safely', error));
   }, []);
 
   const stats = {
@@ -1246,6 +1252,10 @@ function App() {
           <button className="workflow-button" type="button" onClick={resetForNewScan}>Reset for New Scan</button>
           <button className="workflow-button" type="button" onClick={() => setShowSettings((value) => !value)}>Settings</button>
           <button className="workflow-button" type="button" onClick={() => exportOpportunitiesCsv(filteredItems.length ? filteredItems : importedItems)}>Export CSV</button>
+          <button className="workflow-button" type="button" onClick={async () => {
+            await apiJson('/logout', { method: 'POST' });
+            window.location.assign('/login');
+          }}>Sign out</button>
           <small className="reset-helper-note">Previous scans will not be deleted.</small>
         </div>
       </section>
@@ -1403,4 +1413,13 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<StandaloneModeGate><App /></StandaloneModeGate>);
+const root = createRoot(document.getElementById('root')!);
+fetch('/api/session').then(async (response) => {
+  if (!response.ok) {
+    window.location.assign('/login');
+    return;
+  }
+  const session = await response.json();
+  csrfToken = session.csrfToken;
+  root.render(<StandaloneModeGate><App /></StandaloneModeGate>);
+}).catch(() => root.render(<p>Unable to connect. Please reload to try again.</p>));

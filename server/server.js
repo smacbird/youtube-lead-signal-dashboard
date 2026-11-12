@@ -6,10 +6,12 @@ import { importYouTubeVideos } from './import/importService.js';
 import { YouTubeReadOnlyClient } from './youtube/client.js';
 import { listNicheProfiles, resolveNicheProfile } from './youtube/nicheProfiles.js';
 import { generateReplyDrafts } from './ai/draftGenerator.js';
+import { createAuth } from './auth.js';
 
 const PORT = Number(process.env.PORT || 4174);
 const store = new JsonImportStore();
 const youtubeClient = new YouTubeReadOnlyClient();
+const auth = createAuth();
 const STATIC_ROOT = join(process.cwd(), 'dist');
 const MIME_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
 
@@ -49,7 +51,16 @@ function sendJson(response, status, body) {
 
 async function readJson(request) {
   const chunks = [];
-  for await (const chunk of request) chunks.push(chunk);
+  let length = 0;
+  for await (const chunk of request) {
+    length += chunk.length;
+    if (length > 64 * 1024) {
+      const error = new Error('Request too large.');
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
   if (!chunks.length) return {};
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
@@ -177,15 +188,90 @@ function opportunitiesToCsv(items) {
   return rows.map((row) => row.map(csvEscape).join(',')).join('\n');
 }
 
+const LOGIN_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Best Lead System sign in</title></head><body><main><h1>Best Lead System</h1><form action="/login" method="post"><label>Owner password <input type="password" name="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form></main></body></html>`;
+
 async function handle(request, response) {
-  const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
+  const url = new URL(request.url, 'http://localhost');
+  response.setHeader('cache-control', 'no-store');
+  response.setHeader('x-content-type-options', 'nosniff');
+  response.setHeader('referrer-policy', 'no-referrer');
+  response.setHeader('content-security-policy', "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
 
   try {
     if (request.method === 'GET' && url.pathname === '/api/health') {
+      sendJson(response, auth.configured ? 200 : 503, { ok: auth.configured });
+      return;
+    }
+    if (!auth.configured) {
+      sendJson(response, 503, { error: { code: 'auth_not_configured', message: 'Service unavailable.' } });
+      return;
+    }
+    if (!auth.sameHost(request)) {
+      sendJson(response, 403, { error: { code: 'invalid_host', message: 'Forbidden.' } });
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/login') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(LOGIN_PAGE);
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/login') {
+      if (!auth.sameOrigin(request)) {
+        sendJson(response, 403, { error: { code: 'invalid_origin', message: 'Forbidden.' } });
+        return;
+      }
+      if (request.headers['content-type']?.split(';')[0] !== 'application/x-www-form-urlencoded') {
+        sendJson(response, 415, { error: { code: 'invalid_content_type', message: 'Invalid request.' } });
+        return;
+      }
+      const chunks = [];
+      let length = 0;
+      for await (const chunk of request) {
+        length += chunk.length;
+        if (length > 4096) { sendJson(response, 413, { error: { code: 'too_large', message: 'Invalid request.' } }); return; }
+        chunks.push(chunk);
+      }
+      const password = new URLSearchParams(Buffer.concat(chunks).toString('utf8')).get('password') || '';
+      const result = auth.login(request, password);
+      if (result.status === 303) {
+        response.writeHead(303, { location: '/', 'set-cookie': result.cookie });
+        response.end();
+      } else {
+        response.writeHead(result.status, { 'content-type': 'text/html; charset=utf-8' });
+        response.end(`${LOGIN_PAGE}<p>Sign in failed or temporarily limited. Please try again later.</p>`);
+      }
+      return;
+    }
+    const session = auth.currentSession(request);
+    if (!session) {
+      if (request.method === 'GET' && !url.pathname.startsWith('/api/')) {
+        response.writeHead(303, { location: '/login' });
+        response.end();
+      } else {
+        sendJson(response, 401, { error: { code: 'unauthorized', message: 'Sign in required.' } });
+      }
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/session') {
+      sendJson(response, 200, { csrfToken: session.csrf });
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/config') {
       sendJson(response, 200, { ok: true, youtubeApiKeyConfigured: Boolean(process.env.YOUTUBE_API_KEY), aiDraftsConfigured: Boolean(process.env.OPENAI_API_KEY), aiDraftProvider: process.env.OPENAI_API_KEY ? 'openai' : 'server_fallback' });
       return;
     }
-
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+      if (!auth.sameOrigin(request) || request.headers['x-csrf-token'] !== session.csrf) {
+        sendJson(response, 403, { error: { code: 'csrf_failed', message: 'Forbidden.' } });
+        return;
+      }
+    }
+    if (request.method === 'POST' && url.pathname === '/logout') {
+      auth.logout(response, session);
+      response.writeHead(303, { location: '/login' });
+      response.end();
+      return;
+    }
 
     if (request.method === 'GET' && url.pathname === '/api/export/opportunities.csv') {
       const items = await store.listOpportunities({ limit: url.searchParams.get('limit') || 500 });
@@ -292,7 +378,7 @@ async function handle(request, response) {
       return;
     }
 
-    if (request.method === 'GET') {
+    if (request.method === 'GET' && !url.pathname.startsWith('/api/')) {
       await sendStatic(response, url.pathname);
       return;
     }
@@ -304,5 +390,5 @@ async function handle(request, response) {
 }
 
 createServer(handle).listen(PORT, '0.0.0.0', () => {
-  console.log(`Read-only YouTube import backend listening on http://0.0.0.0:${PORT}`);
+  console.log(`Best Lead System listening on port ${PORT}`);
 });

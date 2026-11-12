@@ -14,15 +14,26 @@ Read-only YouTube comment import and review dashboard for affiliate marketing op
 - Runtime: Node
 - Build command: `npm install && npm run build`
 - Start command: `npm start`
-- Required env var: `YOUTUBE_API_KEY`
-- Optional env var for live AI drafts: `OPENAI_API_KEY`
+- Required before deploying this protected version: `AUTH_ORIGIN`, `OWNER_PASSWORD`, `SESSION_SECRET` (see below)
+- Required for YouTube imports: `YOUTUBE_API_KEY`
+- Optional for live AI drafts: `OPENAI_API_KEY`
+
+## Owner-only access
+
+Set `AUTH_ORIGIN` to the exact HTTPS origin that appears in the browser (for example `https://your-service.onrender.com`, without a trailing slash). Use a unique password of at least 16 characters in `OWNER_PASSWORD` and a separate randomly generated secret of at least 32 characters in `SESSION_SECRET`. Keep all three in Render environment settings, never in source, frontend code, screenshots, or logs. If any is missing or invalid, the app returns 503 instead of serving the dashboard. The only public endpoint is minimal `/api/health`; the sign-in form is public only after configuration.
+
+Sessions use a secure HttpOnly SameSite=Strict cookie for 8 hours and are held in one server process: restart or redeploy signs everyone out. POST and DELETE calls require both same-origin checks and a per-session CSRF token; sign-in attempts are limited per process. This design is for a single instance and one owner, not a multi-user service or horizontally scaled replicas. Log out using **Sign out**. A public URL remains a public login surface: use additional network-level access controls if the deployment needs to be hidden entirely.
+
+For local browser testing only, `AUTH_ORIGIN=http://127.0.0.1:4174` (or localhost) permits an insecure cookie. Do not use HTTP or a localhost origin for a publicly reachable deployment. Run `npm run check:security` to verify the access boundary using isolated temporary data; it does not call YouTube or a live service.
+
+**Deployment order for the currently public service:** restrict access or pause the service first if exposure must stop immediately. Add the three auth environment variables in Render before deploying this code, checking whether saving settings triggers a deploy; keep automatic deployment off while preparing. Preserve `IMPORT_STORE_PATH` and its persistent disk. Deploy only after the settings are present, then verify anonymous access is denied and an owner can sign in using a browser. Do not expose or paste the password during verification. Setting variables alone does **not** protect the old running code.
 
 ## Local development
 
 ```bash
 npm install
 npm run build
-YOUTUBE_API_KEY=your_key npm start
+AUTH_ORIGIN=http://127.0.0.1:4174 OWNER_PASSWORD='local-dev-password-at-least-16-chars' SESSION_SECRET='local-dev-random-secret-at-least-32-chars' YOUTUBE_API_KEY=your_key npm start
 ```
 
 
