@@ -89,6 +89,8 @@ try {
       const response = await fetch(`${origin}${path}`, { method, redirect: 'manual', headers: { origin } });
       assert.equal(response.status, method === 'GET' && !path.startsWith('/api/') ? 303 : 401, `${method} ${path} must reject strangers`);
     }
+    const loginPage = await fetch(`${origin}/login`);
+    assert.equal(loginPage.headers.get('referrer-policy'), 'same-origin', 'browsers must still send a real Origin on form posts');
     assert.equal((await fetch(`${origin}/api/health`)).status, 200);
     assert.equal((await fetch(`${origin}/login`)).status, 200);
     const noOrigin = await fetch(`${origin}/login`, { method: 'POST', body: new URLSearchParams({ password: PASSWORD }), redirect: 'manual' });

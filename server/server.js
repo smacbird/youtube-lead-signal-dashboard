@@ -194,7 +194,7 @@ async function handle(request, response) {
   const url = new URL(request.url, 'http://localhost');
   response.setHeader('cache-control', 'no-store');
   response.setHeader('x-content-type-options', 'nosniff');
-  response.setHeader('referrer-policy', 'no-referrer');
+  response.setHeader('referrer-policy', 'same-origin');
   response.setHeader('content-security-policy', "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
 
   try {
