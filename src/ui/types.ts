@@ -19,6 +19,8 @@ export type ScoreDimension = {
 
 export type ReplyDraft = {
   id: string;
+  opportunityId?: string;
+  createdBy?: string;
   style: DraftStyle | string;
   body: string;
   complianceNotes: string[];
@@ -102,6 +104,7 @@ export type ScanSummary = {
   capped: number;
   skipped: number;
   videos: number | null;
+  readableVideos: number | null;
   quotaUnits: number;
   perVideo: VideoBreakdown[];
   notes: string[];

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { pickDraftForLead } from './draftSelection.js';
 import { copyBundleText, dimensionLabels, isRealYouTubeUrl, leadStrengthLabel, makeDrafts, makeYouTubeCommentUrl, makeYouTubeVideoUrl, nextBestAction, replyStyleLabels, riskLabel, situationDetails, statusHelp, statusLabels, transitionOptions, whyThisMatters } from './helpers';
 import type { LocalStatus, ScoreDimension, ScoredFixture } from './types';
 
@@ -20,7 +21,7 @@ function ScoreBreakdown({ dimensions }: { dimensions: ScoreDimension[] }) {
   );
 }
 
-export function ReplyPanel({ item, status, selectedDraftId, aiDrafts, onSelectDraft, onTransition, onGenerateDrafts }: {
+export function ReplyPanel({ item, status, selectedDraftId, aiDrafts, onSelectDraft, onTransition, onGenerateDrafts, initialScoreOpen = false }: {
   item: ScoredFixture;
   status: LocalStatus;
   selectedDraftId?: string;
@@ -28,11 +29,14 @@ export function ReplyPanel({ item, status, selectedDraftId, aiDrafts, onSelectDr
   onSelectDraft: (draftId: string) => void;
   onTransition: (to: LocalStatus) => void;
   onGenerateDrafts: () => Promise<void>;
+  initialScoreOpen?: boolean;
 }) {
   const [generating, setGenerating] = useState(false);
   const [note, setNote] = useState('');
   const drafts = makeDrafts(item);
-  const selectedDraft = drafts.find((draft) => draft.id === selectedDraftId) ?? drafts[0];
+  const selectedDraft = pickDraftForLead(drafts, selectedDraftId, item.opportunity.id);
+  const ideaDrafts = drafts.filter((draft) => draft.createdBy !== 'openai');
+  const writtenDrafts = drafts.filter((draft) => draft.createdBy === 'openai');
   const commentUrl = makeYouTubeCommentUrl(item);
   const videoUrl = makeYouTubeVideoUrl(item);
   const realLinks = isRealYouTubeUrl(commentUrl);
@@ -46,11 +50,6 @@ export function ReplyPanel({ item, status, selectedDraftId, aiDrafts, onSelectDr
     } catch {
       setNote('Your browser blocked copying. Select the text and copy it by hand.');
     }
-  }
-
-  function open(url: string) {
-    const opened = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!opened) copy(url, 'the link (your browser blocked the new tab)');
   }
 
   async function generate() {
@@ -70,8 +69,8 @@ export function ReplyPanel({ item, status, selectedDraftId, aiDrafts, onSelectDr
     <div className="reply-panel" aria-label={`Reply to ${item.comment.authorDisplayName}`}>
       <div className="detail-header">
         <div>
-          <h3>{item.comment.authorDisplayName}</h3>
-          <p className="workflow-note">{item.video.title}</p>
+          <h3>Comment by {item.comment.authorDisplayName}</h3>
+          <p className="workflow-note">On: {item.video.title}</p>
         </div>
         <span className="card-badges">
           <span className={`priority ${item.score.priority}`}>Lead strength: {leadStrengthLabel(item.score.priority)}</span>
@@ -98,15 +97,22 @@ export function ReplyPanel({ item, status, selectedDraftId, aiDrafts, onSelectDr
       <div className="detail-section">
         <div className="section-heading-row">
           <h4>1. Pick a reply idea</h4>
-          <button className="workflow-button safe" type="button" disabled={generating} onClick={generate}>{generating ? 'Writing…' : aiDrafts ? 'Write new ideas with AI' : 'Write new ideas'}</button>
+          <button className="source-button" type="button" disabled={generating} onClick={generate}>{generating ? 'Writing…' : aiDrafts ? 'Write new ideas with AI' : 'Write new ideas'}</button>
         </div>
         {drafts.length ? (
           <>
-            <div className="draft-tabs" aria-label="Reply ideas">
-              {drafts.map((draft) => (
-                <button aria-pressed={selectedDraft?.id === draft.id} className={selectedDraft?.id === draft.id ? 'draft-tab active' : 'draft-tab'} key={draft.id} onClick={() => onSelectDraft(draft.id)} type="button">
-                  {replyStyleLabels[draft.style] ?? draft.style}
-                </button>
+            <div className="draft-groups">
+              {([{ title: 'Ideas', drafts: ideaDrafts }, { title: 'Written by AI', drafts: writtenDrafts }] as const).filter((group) => group.drafts.length > 0).map((group) => (
+                <div className="draft-group" key={group.title}>
+                  <strong>{group.title}</strong>
+                  <div className="draft-tabs" aria-label={`${group.title} for this comment`}>
+                    {group.drafts.map((draft) => (
+                      <button aria-pressed={selectedDraft?.id === draft.id} className={selectedDraft?.id === draft.id ? 'draft-tab active' : 'draft-tab'} key={draft.id} onClick={() => onSelectDraft(draft.id)} type="button">
+                        {selectedDraft?.id === draft.id ? '✓ ' : ''}{replyStyleLabels[draft.style] ?? draft.style}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
             {selectedDraft && (
@@ -124,8 +130,8 @@ export function ReplyPanel({ item, status, selectedDraftId, aiDrafts, onSelectDr
         <p className="workflow-note">This app never posts for you. Copy the reply, open the comment on YouTube, paste it and post it yourself.</p>
         <div className="action-grid">
           <button className="source-button primary" type="button" onClick={() => selectedDraft && copy(selectedDraft.body, 'the reply')} disabled={!selectedDraft}>Copy reply</button>
-          <button className="source-button primary" type="button" disabled={!realLinks} onClick={() => open(commentUrl)}>Open comment on YouTube</button>
-          <button className="source-button" type="button" disabled={!realLinks} onClick={() => open(videoUrl)}>Open video</button>
+          {realLinks ? <a className="source-button primary" href={commentUrl} target="_blank" rel="noopener noreferrer">Open comment on YouTube</a> : <span className="source-button disabled">Comment link unavailable in demo</span>}
+          {realLinks ? <a className="source-button" href={videoUrl} target="_blank" rel="noopener noreferrer">Open video</a> : null}
           <button className="source-button" type="button" disabled={!realLinks} onClick={() => copy(commentUrl, 'the comment link')}>Copy comment link</button>
           <button className="source-button" type="button" onClick={() => copy(copyBundleText(item, selectedDraft?.body), 'the full summary')}>Copy full summary</button>
         </div>
@@ -145,9 +151,8 @@ export function ReplyPanel({ item, status, selectedDraftId, aiDrafts, onSelectDr
         </div>
       </div>
 
-      <details className="more-options">
+      <details className="more-options" open={initialScoreOpen ? true : undefined}>
         <summary>How this comment was scored</summary>
-        <p>{item.score.summary}</p>
         {item.score.evidenceSnippets.length > 0 && (
           <div className="evidence-list">{item.score.evidenceSnippets.map((snippet) => <span key={snippet}>“{snippet}”</span>)}</div>
         )}

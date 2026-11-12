@@ -38,13 +38,14 @@ export async function scanNiche({ body, store, youtubeClient }) {
     options: {
       ...body,
       maxVideos,
-      maxPagesPerVideo: body.maxPagesPerVideo || body.maxPages || 1,
+      autoPagesPerVideo: true,
       maxCommentsPerRun: body.maxCommentsPerRun || body.maxComments || 250,
-      maxResultsPerPage: body.maxResultsPerPage || body.maxCommentsPerVideo || 50,
+      maxResultsPerPage: 100,
       profileId,
     },
     store,
     youtubeClient,
+    videoItems: selection.videoItems,
     metadata: { scanType: 'niche', profileId, profileLabel: profile.label, queries, daysBack, maxVideos, order: body.order || 'relevance', profileId, profileLabel: profile.label },
   });
   run.estimatedQuotaUnits += estimatedSearchQuotaUnits + estimatedRankingQuotaUnits;

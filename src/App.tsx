@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client';
 import sampleData from '../data/sample-comments.json';
 import { scoreSampleItems } from './scoring/scoring.js';
 import { apiJson, setCsrfToken } from './ui/api';
-import { buildScanSummary, exportOpportunitiesCsv, isWithinAge, matchesTab, nicheLabel, normaliseImportedOpportunity, statusLabels, typeLabels } from './ui/helpers';
+import { pickSelectedItem } from './ui/draftSelection.js';
+import { buildScanSummary, exportOpportunitiesCsv, isWithinAge, matchesTab, nicheLabel, nichePhrase, normaliseImportedOpportunity, statusLabels, typeLabels } from './ui/helpers';
 import { AppHeader, StepProgress, StepSection, type StepState } from './ui/layout';
 import { NichePicker } from './ui/nicheStep';
 import { ReplyPanel } from './ui/replyStep';
@@ -14,6 +15,8 @@ import type { AppSettings, FixtureItem, FreshnessWindow, HealthConfig, LocalStat
 import './styles.css';
 
 const ALL_NICHES: NicheProfile[] = ['affiliate_marketing', 'money_making', 'work_from_home', 'side_hustles', 'biz_opp', 'ai_tools', 'traffic_leads', 'organic_traffic'];
+const LAST_RUN_KEY = 'best-lead-system:last-run';
+const SELECTED_LEAD_KEY = 'best-lead-system:selected-lead';
 const CORE_TABS: ReviewTab[] = ['best', 'maybe', 'not_fit', 'done'];
 
 function buildDemoItems(): ScoredFixture[] {
@@ -35,12 +38,14 @@ function App() {
   const [isDemo, setIsDemo] = useState(false);
   const [niche, setNiche] = useState<NicheProfile>('work_from_home');
   const [nicheChosen, setNicheChosen] = useState(false);
+  const [expandedStep, setExpandedStep] = useState(1);
   const [tab, setTab] = useState<ReviewTab>('best');
   const [age, setAge] = useState<FreshnessWindow>('all');
   const [statusFilter, setStatusFilter] = useState<Status>('all');
   const [scoreFilter, setScoreFilter] = useState<ScoreBand>('all');
   const [typeFilter, setTypeFilter] = useState<OpportunityType>('all');
   const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [firstLeadId, setFirstLeadId] = useState<string | undefined>();
   const [statuses, setStatuses] = useState<Record<string, LocalStatus>>({});
   const [selectedDrafts, setSelectedDrafts] = useState<Record<string, string>>({});
   const [healthConfig, setHealthConfig] = useState<HealthConfig>({});
@@ -50,6 +55,34 @@ function App() {
 
   useEffect(() => {
     apiJson('/api/config').then(setHealthConfig).catch((error) => console.warn('Configuration check failed safely', error));
+  }, []);
+
+  // Restore this tab's last saved run on reload; no YouTube call is made.
+  useEffect(() => {
+    const runId = sessionStorage.getItem(LAST_RUN_KEY);
+    if (!runId) return;
+    let active = true;
+    apiJson(`/api/import-runs/${encodeURIComponent(runId)}`).then((body) => {
+      if (!active) return;
+      const restored = (body.items || []).map(normaliseImportedOpportunity);
+      setItems(restored);
+      setSummary(buildScanSummary('previous', restored, body));
+      setStatuses(Object.fromEntries(restored.map((item: ScoredFixture) => [item.id, item.opportunity.status])));
+      setNicheChosen(true);
+      const profile = body.run?.metadata?.profileId;
+      if (ALL_NICHES.includes(profile)) setNiche(profile);
+      const lastSelected = sessionStorage.getItem(SELECTED_LEAD_KEY);
+      if (lastSelected && restored.some((item: ScoredFixture) => item.id === lastSelected)) {
+        setSelectedId(lastSelected);
+        setFirstLeadId(lastSelected);
+        setExpandedStep(4);
+        window.setTimeout(() => scrollToStep(4), 100);
+      } else {
+        setExpandedStep(3);
+        window.setTimeout(() => scrollToStep(3), 100);
+      }
+    }).catch(() => { sessionStorage.removeItem(LAST_RUN_KEY); sessionStorage.removeItem(SELECTED_LEAD_KEY); });
+    return () => { active = false; };
   }, []);
 
   const statusOf = (item: ScoredFixture) => statuses[item.id] ?? item.opportunity.status;
@@ -74,7 +107,7 @@ function App() {
     return result;
   }, [ageFiltered, tabs, statuses]);
   const visible = useMemo(() => ageFiltered.filter((item) => matchesTab(item, statusOf(item), tab)), [ageFiltered, tab, statuses]);
-  const selected = visible.find((item) => item.id === selectedId) ?? visible[0];
+  const selected = pickSelectedItem(visible, selectedId);
   const nicheLeadCount = items.filter((item) => item.score.opportunityType === 'niche_lead').length;
 
   useEffect(() => { if (!tabs.includes(tab)) setTab('best'); }, [tabs, tab]);
@@ -82,11 +115,14 @@ function App() {
   const stepStates: StepState[] = [
     nicheChosen || items.length ? 'done' : 'current',
     items.length ? 'done' : nicheChosen ? 'current' : 'upcoming',
-    !items.length ? 'upcoming' : selectedId ? 'done' : 'current',
-    items.length && selectedId ? 'current' : 'upcoming',
+    !items.length ? 'upcoming' : selected ? 'done' : 'current',
+    selected ? 'current' : 'upcoming',
   ];
 
-  function applyResult({ items: next, summary: nextSummary }: ScanResult) {
+  function applyResult({ items: next, summary: nextSummary, runId }: ScanResult) {
+    if (runId) sessionStorage.setItem(LAST_RUN_KEY, runId);
+    else sessionStorage.removeItem(LAST_RUN_KEY);
+    sessionStorage.removeItem(SELECTED_LEAD_KEY);
     setItems(next);
     setSummary(nextSummary);
     setIsDemo(false);
@@ -97,11 +133,17 @@ function App() {
     setTypeFilter('all');
     setTab('best');
     setSelectedId(undefined);
+    setFirstLeadId(undefined);
+    setExpandedStep(3);
     window.setTimeout(() => scrollToStep(3), 50);
   }
 
   function resetForNewScan() {
+    sessionStorage.removeItem(LAST_RUN_KEY);
+    sessionStorage.removeItem(SELECTED_LEAD_KEY);
+    setExpandedStep(1);
     setItems([]);
+    setFirstLeadId(undefined);
     setSummary(undefined);
     setIsDemo(false);
     setSelectedId(undefined);
@@ -114,6 +156,9 @@ function App() {
   }
 
   function showDemo() {
+    sessionStorage.removeItem(LAST_RUN_KEY);
+    sessionStorage.removeItem(SELECTED_LEAD_KEY);
+    setExpandedStep(3);
     const demo = buildDemoItems();
     setItems(demo);
     setIsDemo(true);
@@ -123,13 +168,21 @@ function App() {
   }
 
   function selectLead(id: string) {
+    if (!firstLeadId) setFirstLeadId(id);
+    sessionStorage.setItem(SELECTED_LEAD_KEY, id);
     setSelectedId(id);
+    setExpandedStep(4);
     window.setTimeout(() => replyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   }
 
   async function updateStatus(to: LocalStatus) {
     if (!selected) return;
     const target = selected;
+    if (to === 'replied' || to === 'rejected') {
+      const next = visible.find((item) => item.id !== target.id);
+      if (next) { setSelectedId(next.id); sessionStorage.setItem(SELECTED_LEAD_KEY, next.id); }
+      else { setSelectedId(undefined); sessionStorage.removeItem(SELECTED_LEAD_KEY); setExpandedStep(3); }
+    }
     setStatuses((current) => ({ ...current, [target.id]: to }));
     if (isDemo) return;
     const endpoint = to === 'replied' ? `/api/opportunities/${encodeURIComponent(target.id)}/manual-replied` : `/api/opportunities/${encodeURIComponent(target.id)}/status`;
@@ -177,28 +230,33 @@ function App() {
 
       <main>
         <h1 className="visually-hidden">Find and reply to YouTube leads</h1>
-        <StepProgress states={stepStates} />
+        <StepProgress states={stepStates} activeStep={expandedStep} onNavigate={(n) => { setExpandedStep(n); window.setTimeout(() => scrollToStep(n), 0); }} />
 
-        <StepSection n={1} state={stepStates[0]} help="Pick the kind of person you want to help. We search YouTube videos where those people leave comments.">
+        <StepSection n={1} state={expandedStep === 1 ? 'current' : stepStates[0]} collapsed={stepStates[0] === 'done' && expandedStep !== 1}
+          summary={`Looking for: ${nicheLabel(niche)}`}
+          onChange={() => { setExpandedStep(1); scrollToStep(1); }}
+          help="Pick the kind of person you want to help. We search YouTube videos where those people leave comments.">
           <NichePicker value={niche} enabled={settings.enabledNiches} onChange={(value) => { setNiche(value); setNicheChosen(true); }} />
-          <div className="approval-hooks">
-            <button type="button" className="workflow-button safe" onClick={() => { setNicheChosen(true); scrollToStep(2); }}>Next: run the scan</button>
-          </div>
+          {!items.length && <div className="approval-hooks">
+            <button type="button" className="workflow-button safe" onClick={() => { setNicheChosen(true); setExpandedStep(2); scrollToStep(2); }}>Next: run the scan</button>
+          </div>}
         </StepSection>
 
-        <StepSection n={2} state={stepStates[1]} help={`Pick a size and press the button. We read public comments on recent ${nicheLabel(niche)} videos; nothing is posted.`}>
+        <StepSection n={2} state={expandedStep === 2 ? 'current' : stepStates[1]} collapsed={stepStates[1] === 'done' && expandedStep !== 2}
+          summary={`Scan: ${summary?.headline || `${items.length} comments loaded`}`}
+          onChange={() => { setExpandedStep(2); scrollToStep(2); }}
+          help={`Pick a size and press the button. We read public comments on recent ${nichePhrase(niche)} videos; nothing is posted.`}>
           <ScanPanel niche={niche} settings={settings} onResult={applyResult} onReset={resetForNewScan} hasResults={items.length > 0} />
-          {summary && !isDemo && <ScanResultCard summary={summary} onShow={(next) => { setTab(next); scrollToStep(3); }} />}
         </StepSection>
+        {summary && !isDemo && <ScanResultCard summary={summary} onShow={(next) => { setTab(next); setSelectedId(undefined); sessionStorage.removeItem(SELECTED_LEAD_KEY); setExpandedStep(3); scrollToStep(3); }} />}
 
-        <StepSection
-          n={3}
-          state={stepStates[2]}
+        <StepSection n={3} state={expandedStep === 3 ? 'current' : stepStates[2]} collapsed={stepStates[2] === 'done' && expandedStep !== 3}
+          summary={selected ? `Reviewing: ${selected.comment.authorDisplayName}` : `${items.length} comments to review`}
+          onChange={() => { setExpandedStep(3); scrollToStep(3); }}
           help="Start with Best leads. Click a comment to see why it was picked and to write your reply."
-          aside={items.length > 0 ? <AgeFilter value={age} onChange={setAge} /> : undefined}
-        >
+          aside={items.length > 0 ? <AgeFilter value={age} onChange={setAge} /> : undefined}>
           {isDemo && <p className="demo-banner">You are looking at demo comments. Run a scan in Step 2 to see real ones.</p>}
-          {items.length > 0 && <ReviewTabs tabs={tabs} active={tab} counts={counts} onChange={(next) => { setTab(next); setSelectedId(undefined); }} />}
+          {items.length > 0 && <ReviewTabs tabs={tabs} active={tab} counts={counts} onChange={(next) => { setTab(next); setSelectedId(undefined); sessionStorage.removeItem(SELECTED_LEAD_KEY); setExpandedStep(3); }} />}
           {items.length > 0 && (
             <details className="more-options review-filters">
               <summary>More filters</summary>
@@ -218,12 +276,13 @@ function App() {
               {isDemo && <p className="workflow-note">These are example comments. Run or load a scan in Step 2 for real ones.</p>}
             </details>
           )}
-          <div className="workspace-grid">
+          <p className="score-explainer">Score 0–100: higher means a more likely real prospect. “Lead strength” is separate from reputation risk.</p>
+          <div className="review-list-wrap">
             <div className="opportunity-list" id="lead-list" role={items.length ? 'tabpanel' : undefined} aria-labelledby={items.length ? `tab-${tab}` : undefined}>
               {visible.length ? (
                 <ul className="lead-list">
                   {visible.map((item) => (
-                    <LeadCard key={item.id} item={item} status={statusOf(item)} selected={selected?.id === item.id} onSelect={() => selectLead(item.id)} />
+                    <LeadCard key={item.id} item={item} status={statusOf(item)} selected={selectedId === item.id} onSelect={() => selectLead(item.id)} />
                   ))}
                 </ul>
               ) : (
@@ -234,14 +293,13 @@ function App() {
               )}
             </div>
 
-            <div ref={replyRef} id="step-4" className={`step-section reply-step ${stepStates[3]}`} aria-labelledby="step-4-title">
-              <div className="step-heading">
-                <div>
-                  <span className="step-badge">Step 4 of 4 · {stepStates[3] === 'current' ? 'You are here' : 'Next'}</span>
-                  <h2 id="step-4-title" tabIndex={-1}>Reply</h2>
-                  <p className="step-help">Pick a reply idea, copy it, post it on YouTube yourself, then mark it done.</p>
-                </div>
-              </div>
+          </div>
+        </StepSection>
+        <div ref={replyRef}>
+          <StepSection n={4} state={expandedStep === 4 ? 'current' : stepStates[3]} collapsed={stepStates[3] === 'done' && expandedStep !== 4}
+            summary={selected ? `Reply to ${selected.comment.authorDisplayName}` : 'Pick a lead to reply to'}
+            onChange={() => { setExpandedStep(4); scrollToStep(4); }}
+            help="Pick a reply idea, copy it, post it on YouTube yourself, then mark it done.">
               {selected ? (
                 <ReplyPanel
                   key={selected.id}
@@ -252,11 +310,11 @@ function App() {
                   onSelectDraft={selectDraft}
                   onTransition={updateStatus}
                   onGenerateDrafts={generateDrafts}
+                  initialScoreOpen={selected.id === firstLeadId}
                 />
               ) : <p className="empty-state">Pick a comment in Step 3 to reply to it.</p>}
-            </div>
-          </div>
-        </StepSection>
+          </StepSection>
+        </div>
       </main>
     </div>
   );

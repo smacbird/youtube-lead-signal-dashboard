@@ -112,10 +112,12 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
   }
 
   let statsById = null;
+  let videoItemsById = null;
   if (candidates.length) {
     try {
       estimatedRankingQuotaUnits += VIDEOS_LIST_QUOTA_UNITS;
       const response = await youtubeClient.listVideos(candidates.map((video) => video.id));
+      videoItemsById = new Map((response.items || []).map((item) => [item.id, item]));
       statsById = new Map((response.items || []).map((item) => [item.id, { commentCount: item?.statistics?.commentCount, title: item?.snippet?.title }]));
     } catch (error) {
       searchErrors.push({ query: null, code: 'video_ranking_failed', message: `Could not load comment counts (${error?.message || 'videos.list failed'}); kept search order.` });
@@ -135,6 +137,8 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
 
   return {
     videos: selected,
+    // Reuse the read-only videos.list response during import; don't spend a second unit.
+    videoItems: videoItemsById ? selected.map((video) => videoItemsById.get(video.id)).filter(Boolean) : null,
     candidatesConsidered: candidates.length,
     droppedVideos: dropped,
     rankedByComments: Boolean(statsById),

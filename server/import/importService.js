@@ -110,7 +110,7 @@ function scoreAndPersist({ state, video, record, metadata, options }) {
     return opportunityId;
 }
 
-export async function importYouTubeVideos({ inputs, options = {}, store, youtubeClient, metadata = {} }) {
+export async function importYouTubeVideos({ inputs, options = {}, store, youtubeClient, metadata = {}, videoItems = null }) {
   const requestedInputs = Array.isArray(inputs) ? inputs : String(inputs || '').split(/[\n,]/).map((value) => value.trim()).filter(Boolean);
   const cappedOptions = clampImportOptions(options);
   const parsed = parseManyYouTubeVideoInputs(requestedInputs, cappedOptions.maxVideosPerRun);
@@ -124,8 +124,10 @@ export async function importYouTubeVideos({ inputs, options = {}, store, youtube
     }
 
     try {
-      run.estimatedQuotaUnits += IMPORT_LIMITS.estimatedVideosListQuota;
-      const videoResponse = await youtubeClient.listVideos(parsed.videoIds);
+      // A niche scan already fetched all selected video metadata during ranking.
+      // Manual imports and ranking failures still make one read-only videos.list call.
+      if (!videoItems) run.estimatedQuotaUnits += IMPORT_LIMITS.estimatedVideosListQuota;
+      const videoResponse = videoItems ? { items: videoItems } : await youtubeClient.listVideos(parsed.videoIds);
       const videosByYouTubeId = new Map((videoResponse.items || []).map((item) => [item.id, normalizeVideoFromYouTube(item)]));
 
       // Fair comment budget: each remaining video gets ceil(remaining budget / remaining videos);
@@ -143,6 +145,31 @@ export async function importYouTubeVideos({ inputs, options = {}, store, youtube
       }
       const seenThisRun = new Set();
       const keptIds = new Set();
+      const resumable = [];
+      const saveThread = (thread, video, result, allowance) => {
+        if (result.fetched >= allowance || run.commentsFetched >= cappedOptions.maxCommentsPerRun) {
+          run.commentsSkipped += 1;
+          run.commentsCapped += 1;
+          result.capped += 1;
+          return;
+        }
+        const comment = normalizeCommentThreadFromYouTube(thread, video);
+        run.commentsFetched += 1;
+        result.fetched += 1;
+        if (seenThisRun.has(comment.id)) {
+          run.commentsSkipped += 1;
+          run.commentsDuplicate += 1;
+          result.duplicates += 1;
+          return;
+        }
+        seenThisRun.add(comment.id);
+        const upsert = upsertImportedComment(state, comment);
+        if (upsert.inserted) run.commentsInserted += 1;
+        if (upsert.updated) { run.commentsUpdated += 1; result.alreadySaved += 1; }
+        const opportunityId = scoreAndPersist({ state, video, record: upsert.record, metadata, options });
+        keptIds.add(opportunityId);
+        result.kept += 1;
+      };
 
       for (let index = 0; index < scanVideos.length; index += 1) {
         const { videoId, normalizedVideo } = scanVideos[index];
@@ -155,7 +182,12 @@ export async function importYouTubeVideos({ inputs, options = {}, store, youtube
 
         let pageToken;
         try {
-          for (let page = 0; page < cappedOptions.maxPagesPerVideo; page += 1) {
+          // For niche scans the shared comment cap determines pages automatically.
+          // One page when this video's allowance is <=100, up to the existing 3-page limit.
+          const pagesForVideo = options.autoPagesPerVideo
+            ? Math.min(IMPORT_LIMITS.maxPagesPerVideo, Math.max(1, Math.ceil(share / cappedOptions.maxResultsPerPage)))
+            : cappedOptions.maxPagesPerVideo;
+          for (let page = 0; page < pagesForVideo; page += 1) {
             const wanted = share - result.fetched;
             if (wanted <= 0) { result.stoppedBy = 'video_budget_used'; break; }
             run.estimatedQuotaUnits += IMPORT_LIMITS.estimatedCommentThreadsListQuota;
@@ -167,36 +199,17 @@ export async function importYouTubeVideos({ inputs, options = {}, store, youtube
             run.pagesFetched += 1;
             result.pages += 1;
 
-            for (const thread of pageResponse.items || []) {
-              if (result.fetched >= share || run.commentsFetched >= cappedOptions.maxCommentsPerRun) {
-                run.commentsSkipped += 1;
-                run.commentsCapped += 1;
-                result.capped += 1;
-                continue;
-              }
-              const comment = normalizeCommentThreadFromYouTube(thread, video);
-              run.commentsFetched += 1;
-              result.fetched += 1;
-              if (seenThisRun.has(comment.id)) {
-                run.commentsSkipped += 1;
-                run.commentsDuplicate += 1;
-                result.duplicates += 1;
-                continue;
-              }
-              seenThisRun.add(comment.id);
-              const upsert = upsertImportedComment(state, comment);
-              if (upsert.inserted) run.commentsInserted += 1;
-              if (upsert.updated) { run.commentsUpdated += 1; result.alreadySaved += 1; }
-              const opportunityId = scoreAndPersist({ state, video, record: upsert.record, metadata, options });
-              keptIds.add(opportunityId);
-              result.kept += 1;
-            }
+            for (const thread of pageResponse.items || []) saveThread(thread, video, result, share);
 
             pageToken = pageResponse.nextPageToken;
             if (!pageToken) { result.stoppedBy = 'no_more_comments'; break; }
-            if (page + 1 >= cappedOptions.maxPagesPerVideo) result.stoppedBy = 'page_limit';
+            if (page + 1 >= pagesForVideo) result.stoppedBy = 'page_limit';
           }
-          if (pageToken) result.moreOnYouTube = true;
+          if (pageToken) {
+            result.moreOnYouTube = true;
+            if (options.autoPagesPerVideo && result.pages < IMPORT_LIMITS.maxPagesPerVideo)
+              resumable.push({ videoId, video, result, pageToken });
+          }
         } catch (error) {
           const safe = sanitizeThrownError(error);
           // Quota or auth problems affect every video: stop the scan. Anything else (comments off,
@@ -205,6 +218,55 @@ export async function importYouTubeVideos({ inputs, options = {}, store, youtube
           result.error = safe.code;
           result.stoppedBy = 'error';
           recordImportError(run, safe.code, safe.message, { videoId, status: safe.status });
+        }
+      }
+      // If late videos had no readable comments, return the unused shared cap to earlier
+      // videos that still have a page token. This is bounded by the existing 3-page limit.
+      if (options.autoPagesPerVideo && resumable.length) {
+        let available = resumable;
+        while (available.length && run.commentsFetched < cappedOptions.maxCommentsPerRun) {
+          const remaining = available;
+          available = [];
+          let progress = 0;
+          for (let index = 0; index < remaining.length; index += 1) {
+            const entry = remaining[index];
+            const { videoId, video, result } = entry;
+            if (result.pages >= IMPORT_LIMITS.maxPagesPerVideo) continue;
+            const remainingBudget = cappedOptions.maxCommentsPerRun - run.commentsFetched;
+            if (remainingBudget <= 0) break;
+            const allowance = result.fetched + Math.ceil(remainingBudget / (remaining.length - index));
+            try {
+              while (result.fetched < allowance && result.pages < IMPORT_LIMITS.maxPagesPerVideo) {
+                run.estimatedQuotaUnits += IMPORT_LIMITS.estimatedCommentThreadsListQuota;
+                const pageResponse = await youtubeClient.listCommentThreads({
+                  videoId,
+                  pageToken: entry.pageToken,
+                  maxResults: Math.min(cappedOptions.maxResultsPerPage, allowance - result.fetched),
+                });
+                run.pagesFetched += 1;
+                result.pages += 1;
+                const before = result.fetched;
+                for (const thread of pageResponse.items || []) saveThread(thread, video, result, allowance);
+                progress += result.fetched - before;
+                entry.pageToken = pageResponse.nextPageToken;
+                if (!entry.pageToken) { result.moreOnYouTube = false; result.stoppedBy = 'no_more_comments'; break; }
+              }
+              if (entry.pageToken && result.pages < IMPORT_LIMITS.maxPagesPerVideo) {
+                result.stoppedBy = 'video_budget_used';
+                available.push(entry);
+              } else if (entry.pageToken) {
+                result.stoppedBy = 'page_limit';
+              }
+            } catch (error) {
+              const safe = sanitizeThrownError(error);
+              if (/quota|keyInvalid|forbidden|youtube_api_key_missing|dailyLimit/i.test(safe.code) && !/commentsDisabled/i.test(safe.code)) throw error;
+              result.error = safe.code;
+              result.stoppedBy = 'error';
+              result.moreOnYouTube = false;
+              recordImportError(run, safe.code, safe.message, { videoId, status: safe.status });
+            }
+          }
+          if (!progress) break;
         }
       }
       run.opportunityIds = [...keptIds];

@@ -1,19 +1,23 @@
 import { leadBucket } from '../scoring/leadBuckets.js';
 import type { DraftStyle, FreshnessWindow, LocalStatus, NicheProfile, OpportunityType, ReplyDraft, ReviewTab, ScanSummary, ScoredFixture } from './types';
 
-export const NICHES: Array<{ id: NicheProfile; label: string; finds: string }> = [
-  { id: 'affiliate_marketing', label: 'Affiliate marketing', finds: 'People asking how to start or grow with affiliate links, sites and commissions.' },
-  { id: 'money_making', label: 'Making money online', finds: 'Beginners asking how to earn online, what it costs and whether it is legit.' },
-  { id: 'work_from_home', label: 'Work-from-home business', finds: 'People who want a home-based business: parents, retirees, career changers.' },
-  { id: 'side_hustles', label: 'Side hustles', finds: 'People with a day job looking for extra income after hours.' },
-  { id: 'biz_opp', label: 'Business opportunities', finds: 'People weighing an opportunity and asking whether it is real and what it costs.' },
-  { id: 'ai_tools', label: 'AI tools and software', finds: 'People asking which AI tool to use, what it costs and how to get started.' },
-  { id: 'traffic_leads', label: 'Getting leads and traffic', finds: 'Business owners asking how to get leads, clients or website visitors.' },
-  { id: 'organic_traffic', label: 'Free traffic from Google (SEO)', finds: 'Site owners asking how to rank on Google and get visitors without ads.' },
+export const NICHES: Array<{ id: NicheProfile; label: string; phrase: string; finds: string }> = [
+  { id: 'affiliate_marketing', label: 'Affiliate marketing', phrase: 'affiliate marketing', finds: 'People asking how to start or grow with affiliate links, sites and commissions.' },
+  { id: 'money_making', label: 'Making money online', phrase: 'making money online', finds: 'Beginners asking how to earn online, what it costs and whether it is legit.' },
+  { id: 'work_from_home', label: 'Work-from-home business', phrase: 'work-from-home business', finds: 'People who want a home-based business: parents, retirees, career changers.' },
+  { id: 'side_hustles', label: 'Side hustles', phrase: 'side hustle', finds: 'People with a day job looking for extra income after hours.' },
+  { id: 'biz_opp', label: 'Business opportunities', phrase: 'business opportunity', finds: 'People weighing an opportunity and asking whether it is real and what it costs.' },
+  { id: 'ai_tools', label: 'AI tools and software', phrase: 'AI tools and software', finds: 'People asking which AI tool to use, what it costs and how to get started.' },
+  { id: 'traffic_leads', label: 'Getting leads and traffic', phrase: 'leads and traffic', finds: 'Business owners asking how to get leads, clients or website visitors.' },
+  { id: 'organic_traffic', label: 'Free traffic from Google (SEO)', phrase: 'free traffic from Google', finds: 'Site owners asking how to rank on Google and get visitors without ads.' },
 ];
 
 export function nicheLabel(id: NicheProfile) {
   return NICHES.find((niche) => niche.id === id)?.label || id;
+}
+
+export function nichePhrase(id: NicheProfile) {
+  return NICHES.find((niche) => niche.id === id)?.phrase || id.replaceAll('_', ' ');
 }
 
 export const statusLabels: Record<LocalStatus, string> = {
@@ -43,7 +47,7 @@ export const typeLabels: Record<OpportunityType, string> = {
 export const tabInfo: Record<ReviewTab, { label: string; help: string }> = {
   best: { label: 'Best leads', help: 'Real prospects: people asking how to start, what it costs, or whether it is legit. Start here.' },
   maybe: { label: 'Maybe', help: 'Some interest, but weaker or riskier. Worth a quick look when Best leads is empty.' },
-  not_fit: { label: 'Not a fit', help: 'Thanks, jokes, spam and comments about the video itself. Each one says why it was set aside.' },
+  not_fit: { label: 'Not a fit', help: 'Thanks, jokes, spam and comments about the video itself. Each one explains why it is not a fit.' },
   done: { label: 'Done', help: 'Comments you replied to or skipped.' },
   buyer: { label: 'Buyer questions', help: 'People deciding which product to buy (from pasted video links).' },
   publisher: { label: 'Site owner problems', help: 'Site owners with traffic or commission problems (from pasted video links).' },
@@ -80,9 +84,9 @@ export const replyStyleLabels: Record<string, string> = {
   concise_resource: 'Short',
   content_follow_up: 'Content idea',
   risk_aware_decline: 'Careful wording',
-  ai_short_helpful: 'AI: short',
-  ai_consultative: 'AI: helpful',
-  ai_content_angle: 'AI: content idea',
+  ai_short_helpful: 'Short',
+  ai_consultative: 'Helpful',
+  ai_content_angle: 'Content idea',
 };
 
 // Niche-scan "not a fit" items carry lowFitReason; older items do not.
@@ -128,8 +132,8 @@ export function isWithinAge(item: ScoredFixture, window: FreshnessWindow) {
 }
 
 export function whyThisMatters(item: ScoredFixture) {
-  if (item.score.opportunityType === 'niche_lead') return item.score.summary;
-  if (isNoise(item)) return `Set aside: ${item.score.summary}`;
+  if (item.score.opportunityType === 'niche_lead') return `This person is asking for help with ${item.score.nicheProfileLabel || 'the video topic'}. Check their situation below and answer only what they asked, without a sales pitch.`;
+  if (isNoise(item)) return `Not a fit: ${item.score.summary}`;
   if (item.score.opportunityType === 'affiliate_publisher_opportunity') return 'A site owner or creator asking about affiliate links, commissions, tracking, or turning traffic into sales.';
   if (item.score.opportunityType === 'consumer_buyer_question') return 'Someone deciding what to buy, comparing options, or asking if a product is worth it.';
   return 'Probably not worth a reply, but it may still give you a content idea.';
@@ -229,7 +233,7 @@ function draftForStyle(item: ScoredFixture, style: DraftStyle): ReplyDraft {
 }
 
 export function makeDrafts(item: ScoredFixture) {
-  const drafts = [...(item.opportunity.replyDrafts ?? [])];
+  const drafts = (item.opportunity.replyDrafts ?? []).filter((draft) => !draft.opportunityId || draft.opportunityId === item.opportunity.id);
   for (const style of ['helpful_consultative', 'concise_resource', 'content_follow_up'] as DraftStyle[]) {
     if (!drafts.some((draft) => draft.style === style) && item.score.recommendedAction !== 'reject_as_spam') drafts.push(draftForStyle(item, style));
   }
@@ -304,7 +308,7 @@ function countBuckets(items: ScoredFixture[], statuses: Record<string, LocalStat
 export function headlineFor(counts: { best: number; maybe: number; not_fit: number; done: number }) {
   const parts = [`${counts.best} lead${counts.best === 1 ? '' : 's'}`];
   if (counts.maybe) parts.push(`${counts.maybe} maybe`);
-  parts.push(`${counts.not_fit} low fit`);
+  parts.push(`${counts.not_fit} not a fit`);
   if (counts.done) parts.push(`${counts.done} done`);
   return parts.join(' + ');
 }
@@ -337,6 +341,7 @@ export function buildScanSummary(source: ScanSummary['source'], items: ScoredFix
     capped: server?.capped ?? 0,
     skipped: server?.skipped ?? 0,
     videos: body.videosFound ? body.videosFound.length : server?.perVideo?.length ?? null,
+    readableVideos: server?.perVideo?.length ? server.perVideo.filter((video: { fetched: number }) => video.fetched > 0).length : null,
     quotaUnits: Number(run.estimatedQuotaUnits || 0),
     perVideo: server?.perVideo || [],
     notes: notes.slice(0, 4),

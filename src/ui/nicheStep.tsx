@@ -9,8 +9,8 @@ export function NichePicker({ value, enabled, onChange }: { value: NicheProfile;
       {NICHES.filter((niche) => enabled.includes(niche.id)).map((niche) => (
         <label key={niche.id} className={value === niche.id ? 'niche-card selected' : 'niche-card'}>
           <input type="radio" name="niche" value={niche.id} checked={value === niche.id} onChange={() => onChange(niche.id)} />
-          <strong>{niche.label}</strong>
-          <span>{niche.finds}</span>
+          <strong><span className="choice-indicator" aria-hidden="true">{value === niche.id ? '✓' : ''}</span>{niche.label}</strong>
+          <span className="choice-description">{niche.finds}</span>
         </label>
       ))}
     </fieldset>

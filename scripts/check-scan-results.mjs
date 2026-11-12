@@ -8,6 +8,7 @@ import { scanNiche } from '../server/scan/scanNiche.js';
 import { importYouTubeVideos } from '../server/import/importService.js';
 import { buildRunSummary } from '../server/import/runSummary.js';
 import { leadBucket, bucketCounts } from '../src/scoring/leadBuckets.js';
+import { estimateScanQuota, SCAN_PRESETS } from '../src/ui/scanPresets.js';
 
 const NOISE = ['Thnx for help', 'Wrong title', "I can't find the link", 'Great video!', 'First!', 'lol', 'Nice', 'God bless you'];
 const LEADS = ["I'm a stay at home mom with no experience, how do I get started?", 'Is this legit? How much does it cost to start?'];
@@ -15,22 +16,25 @@ const LEADS = ["I'm a stay at home mom with no experience, how do I get started?
 function vid(n) { return `vid${String(n).padStart(8, '0')}`; }
 
 /** Mock read-only client. commentsByVideo: { [videoId]: number of comments available }. */
-function mockClient(commentsByVideo, { leadsPerVideo = 1 } = {}) {
-  const calls = { commentThreads: [] };
+function mockClient(commentsByVideo, { leadsPerVideo = 1, disabledIds = [] } = {}) {
+  const calls = { commentThreads: [], videos: 0, searches: 0 };
   const ids = Object.keys(commentsByVideo);
   let searchOffset = 0;
   return {
     calls,
     async searchVideos({ maxResults }) {
+      calls.searches += 1;
       const page = ids.slice(searchOffset, searchOffset + maxResults);
       searchOffset += maxResults;
       return { items: page.map((id) => ({ id: { videoId: id }, snippet: { title: `Home business for beginners ${id}`, channelTitle: 'Ch' } })) };
     },
     async listVideos(videoIds) {
+      calls.videos += 1;
       return { items: videoIds.filter((id) => id in commentsByVideo).map((id) => ({ id, snippet: { title: `Home business for beginners ${id}`, channelId: `owner_${id}`, channelTitle: 'Ch', publishedAt: '2026-11-01T00:00:00Z' }, statistics: { commentCount: String(Math.max(commentsByVideo[id], 10)) }, status: { privacyStatus: 'public' } })) };
     },
     async listCommentThreads({ videoId, pageToken, maxResults }) {
       calls.commentThreads.push({ videoId, pageToken, maxResults });
+      if (disabledIds.includes(videoId)) throw Object.assign(new Error('Comments are disabled for this video.'), { code: 'commentsDisabled' });
       const total = commentsByVideo[videoId];
       const start = Number(pageToken || 0);
       const end = Math.min(total, start + maxResults);
@@ -71,8 +75,12 @@ try {
     assert.equal(result.summary.best + result.summary.maybe + result.summary.notFit + result.summary.done, 100, 'buckets add up');
     assert.equal(result.summary.best, 5, `one lead per video, got ${result.summary.best}`);
     assert.equal(result.summary.notFit, 95);
-    assert.equal(result.summary.headline, '5 leads + 95 low fit');
+    assert.equal(result.summary.headline, '5 leads + 95 not a fit');
     assert.equal(result.summary.perVideo.length, 5);
+    assert.equal(client.calls.videos, 1, 'ranking metadata reused for import: one videos.list call');
+    assert.equal(result.run.estimatedQuotaUnits, client.calls.searches * 100 + client.calls.videos + client.calls.commentThreads.length, 'quota equals searches x 100 + video metadata + comment pages');
+    const quickEstimate = estimateScanQuota({ videos: SCAN_PRESETS[0].videos, comments: SCAN_PRESETS[0].comments, queryCount: 6 });
+    assert.ok(result.run.estimatedQuotaUnits >= quickEstimate.low && result.run.estimatedQuotaUnits <= quickEstimate.high, 'UI estimate brackets the actual one-lookup scan');
     assert.ok(result.summary.perVideo.every((v) => v.fetched === 20 && v.kept === 20), 'fair share of 20 each');
 
     // The saved run reloads with the same items (Previous Scans path) and full quota.
@@ -80,6 +88,25 @@ try {
     assert.equal(reloaded.items.length, 100);
     assert.equal(reloaded.run.estimatedQuotaUnits, result.run.estimatedQuotaUnits, 'scan-level quota persisted');
     assert.ok(reloaded.run.title, 'scan title persisted');
+  }
+
+  // Ranking's commentCount can include replies or be stale: ten videos can all report
+  // 10+ comments while only four return readable top-level threads. Backfill earlier
+  // readable videos, but do not claim the scan reached 200 when only 157 exist.
+  {
+    const store = new JsonImportStore({ filePath: join(tempDir, 'sparse-store.json') });
+    const counts = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [vid(40 + i), i < 4 ? (i === 0 ? 40 : 39) : 0]));
+    const client = mockClient(counts, { disabledIds: [vid(49)] });
+    const result = await scanNiche({ body: { profileId: 'work_from_home', maxVideos: 10, maxCommentsPerRun: 200 }, store, youtubeClient: client });
+    assert.equal(result.videosFound.length, 10);
+    assert.equal(result.run.commentsFetched, 157, 'reads every available comment after returning unused budget to four readable videos');
+    assert.equal(result.summary.perVideo.filter((video) => video.fetched > 0).length, 4, 'reports four readable videos out of ten selected');
+    assert.equal(result.summary.perVideo.filter((video) => video.fetched === 0).length, 6);
+    assert.ok(result.summary.perVideo.filter((video) => video.fetched === 0).every((video) => video.stoppedBy === 'no_more_comments' || video.error === 'commentsDisabled'), 'zero-comment videos have an explicit stop reason');
+    assert.equal(result.run.status, 'completed_with_errors', 'comments disabled is reported without losing other videos');
+    assert.equal(client.calls.videos, 1);
+    assert.ok(result.run.videoResults.every((video) => video.pages <= 3), 'backfill never exceeds three pages per video');
+    assert.equal(result.run.estimatedQuotaUnits, client.calls.searches * 100 + client.calls.videos + client.calls.commentThreads.length);
   }
 
   // (b) Uneven comment counts: early videos must not eat the whole budget, and unused
@@ -129,7 +156,7 @@ try {
   assert.equal(leadBucket({ opportunityType: 'consumer_buyer_question', overallScore: 30 }), 'maybe');
   assert.equal(leadBucket({ opportunityType: 'low_fit_comment', overallScore: 10 }), 'not_fit');
   assert.equal(leadBucket({ opportunityType: 'niche_lead', status: 'replied' }), 'done');
-  assert.equal(bucketCounts([{ opportunityType: 'niche_lead' }, { opportunityType: 'low_fit_comment' }]).headline, '1 lead + 1 low fit');
+  assert.equal(bucketCounts([{ opportunityType: 'niche_lead' }, { opportunityType: 'low_fit_comment' }]).headline, '1 lead + 1 not a fit');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
 }

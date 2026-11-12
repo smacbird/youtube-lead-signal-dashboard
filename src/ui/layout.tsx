@@ -9,7 +9,7 @@ export const STEPS = [
   { n: 4, title: 'Reply' },
 ];
 
-const stateText: Record<StepState, string> = { done: 'Done', current: 'You are here', upcoming: 'Next' };
+const stateText: Record<StepState, string> = { done: 'Finished', current: 'You are here', upcoming: 'Next' };
 
 export function AppHeader({ leadCount, onSettings, settingsOpen, onExport, exportDisabled, onSignOut }: { leadCount: number | null; onSettings: () => void; settingsOpen: boolean; onExport: () => void; exportDisabled: boolean; onSignOut: () => void }) {
   return (
@@ -19,7 +19,7 @@ export function AppHeader({ leadCount, onSettings, settingsOpen, onExport, expor
         <span>Find people on YouTube asking for help, and reply to them yourself.</span>
       </div>
       {leadCount !== null && (
-        <p className="header-leads" aria-live="polite"><strong>{leadCount}</strong> real prospect{leadCount === 1 ? '' : 's'} found</p>
+        <p className="header-leads" aria-live="polite"><strong>{leadCount}</strong> lead{leadCount === 1 ? '' : 's'} found</p>
       )}
       <nav className="header-menu" aria-label="Account and tools">
         <button type="button" className="header-button" aria-expanded={settingsOpen} aria-controls="settings-panel" onClick={onSettings}>Settings</button>
@@ -30,19 +30,19 @@ export function AppHeader({ leadCount, onSettings, settingsOpen, onExport, expor
   );
 }
 
-export function StepProgress({ states }: { states: StepState[] }) {
+export function StepProgress({ states, activeStep, onNavigate }: { states: StepState[]; activeStep: number; onNavigate: (step: number) => void }) {
   return (
     <nav className="step-progress" aria-label="Your progress">
       <ol>
         {STEPS.map((step, index) => (
-          <li key={step.n} className={`progress-step ${states[index]}`} aria-current={states[index] === 'current' ? 'step' : undefined}>
-            <a href={`#step-${step.n}`}>
+          <li key={step.n} className={`progress-step ${activeStep === step.n ? 'current' : states[index]}`}>
+            <button type="button" onClick={() => onNavigate(step.n)} aria-current={activeStep === step.n ? 'step' : undefined} aria-label={`Go to step ${step.n}: ${step.title}`}>
               <span className="progress-number" aria-hidden="true">{states[index] === 'done' ? '✓' : step.n}</span>
               <span className="progress-text">
                 <strong>{step.title}</strong>
-                <small>{stateText[states[index]]}</small>
+                <small>{stateText[activeStep === step.n ? 'current' : states[index]]}</small>
               </span>
-            </a>
+            </button>
           </li>
         ))}
       </ol>
@@ -50,11 +50,16 @@ export function StepProgress({ states }: { states: StepState[] }) {
   );
 }
 
-export function StepSection({ n, state, help, children, aside }: { n: number; state: StepState; help: string; children: React.ReactNode; aside?: React.ReactNode }) {
+export function StepSection({ n, state, help, children, aside, collapsed = false, summary, onChange }: { n: number; state: StepState; help: string; children: React.ReactNode; aside?: React.ReactNode; collapsed?: boolean; summary?: string; onChange?: () => void }) {
   const step = STEPS[n - 1];
   return (
-    <section id={`step-${n}`} className={`step-section ${state}`} aria-labelledby={`step-${n}-title`}>
-      <div className="step-heading">
+    <section id={`step-${n}`} className={`step-section ${state}${collapsed ? ' collapsed' : ''}`} aria-labelledby={`step-${n}-title`}>
+      {collapsed ? (
+        <div className="step-compact">
+          <h2 id={`step-${n}-title`} tabIndex={-1}>Step {n} · {summary || step.title}</h2>
+          <button type="button" className="quiet-button" onClick={onChange} aria-label={`Change step ${n}: ${step.title}`}>Change</button>
+        </div>
+      ) : <><div className="step-heading">
         <div>
           <span className="step-badge">Step {n} of 4 · {stateText[state]}</span>
           <h2 id={`step-${n}-title`} tabIndex={-1}>{step.title}</h2>
@@ -62,14 +67,14 @@ export function StepSection({ n, state, help, children, aside }: { n: number; st
         </div>
         {aside}
       </div>
-      {children}
+      {children}</>}
     </section>
   );
 }
 
-export function StatCard({ label, value, note, emphasis }: { label: string; value: string | number; note?: string; emphasis?: boolean }) {
+export function StatCard({ label, value, note, emphasis, muted }: { label: string; value: string | number; note?: string; emphasis?: boolean; muted?: boolean }) {
   return (
-    <div className={emphasis ? 'stat-card emphasis' : 'stat-card'}>
+    <div className={`stat-card${emphasis ? ' emphasis' : ''}${muted ? ' muted' : ''}`}>
       <span>{label}</span>
       <strong>{value}</strong>
       {note && <small>{note}</small>}

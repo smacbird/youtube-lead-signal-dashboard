@@ -28,7 +28,7 @@ export function ReviewTabs({ tabs, active, counts, onChange }: { tabs: ReviewTab
             aria-selected={active === tab}
             tabIndex={active === tab ? 0 : -1}
             aria-controls="lead-list"
-            className={active === tab ? 'review-tab active' : 'review-tab'}
+            className={`review-tab${active === tab ? ' active' : ''}${counts[tab] === 0 ? ' empty' : ''}`}
             onClick={() => onChange(tab)}
           >
             {tabInfo[tab].label} <span className="tab-count">{counts[tab]}</span>
@@ -49,7 +49,7 @@ export function AgeFilter({ value, onChange }: { value: FreshnessWindow; onChang
         <option value="14">Last 14 days</option>
         <option value="30">Last 30 days</option>
       </select>
-      <small id="age-help">Comments under 14 days old are the best to reply to: the person is still likely to see it. Older ones are fine for content ideas.</small>
+      <small id="age-help">Under 14 days: reply soon. Up to 30 days: review for ideas. Older comments stay visible with “Any age.”</small>
     </label>
   );
 }
@@ -57,21 +57,26 @@ export function AgeFilter({ value, onChange }: { value: FreshnessWindow; onChang
 export function LeadCard({ item, status, selected, onSelect }: { item: ScoredFixture; status: LocalStatus; selected: boolean; onSelect: () => void }) {
   const noise = isNoise(item) || item.score.opportunityType === 'low_fit_comment';
   const details = situationDetails(item);
+  const days = new Date(item.comment.publishedAt).getTime();
+  const ageInDays = Number.isFinite(days) ? Math.max(0, Math.floor((Date.now() - days) / 86400000)) : null;
+  const ageHint = ageInDays === null ? 'Age unknown' : ageInDays < 14 ? 'Reply soon' : 'Older';
+  const shortReason = item.score.summary.length > 110 ? `${item.score.summary.slice(0, 107).trimEnd()}…` : item.score.summary;
   return (
     <li className="lead-list-item">
       <button className={selected ? 'opportunity-card selected' : 'opportunity-card'} onClick={onSelect} type="button" aria-pressed={selected}>
         <span className="card-topline">
           <span className={`score-ring ${item.score.priority}`} aria-label={`Score ${item.score.overallScore} out of 100`}>{item.score.overallScore}</span>
           <span className="card-who">
-            <strong>{item.comment.authorDisplayName}</strong>
-            <span>{item.video.channelName} · {ageLabel(item)}</span>
+            <strong>Comment by {item.comment.authorDisplayName}</strong>
+            <span>On: {item.video.title}</span>
+            <span>{ageLabel(item)} · {ageHint}</span>
           </span>
           <span className="card-badges">
             {!noise && <span className={`priority ${item.score.priority}`}>Lead strength: {leadStrengthLabel(item.score.priority)}</span>}
             <span className={`risk ${item.score.riskLevel}`}>Reputation risk: {riskLabel(item.score.riskLevel)}</span>
           </span>
         </span>
-        <span className={noise ? 'card-reason low-fit-reason' : 'card-reason'}>{noise ? `Not a fit: ${item.score.summary}` : item.score.summary}</span>
+        <span className={noise ? 'card-reason low-fit-reason' : 'card-reason'}>{noise ? `Not a fit: ${shortReason}` : shortReason}</span>
         {details.length > 0 && (
           <span className="situation-row">
             <span className="visually-hidden">Their situation: </span>
