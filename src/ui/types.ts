@@ -64,6 +64,7 @@ export type ScoredFixture = FixtureItem & {
     summary: string;
     opportunityType: Exclude<OpportunityType, 'all'>;
     opportunityTypeLabel: string;
+    leadFit?: 'best' | 'maybe' | null;
     recommendedAction: string;
     detectedOfferFit: string[];
     evidenceSnippets: string[];
@@ -89,6 +90,8 @@ export type VideoBreakdown = {
 export type ScanSummary = {
   source: 'scan' | 'manual' | 'previous' | 'saved';
   title?: string;
+  startedAt?: string;
+  candidatesConsidered?: number | null;
   headline: string;
   best: number;
   maybe: number;

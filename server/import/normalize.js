@@ -114,17 +114,3 @@ export function makeScoringItem(video, comment) {
   };
 }
 
-export function makeReplyDrafts(opportunityId, comment) {
-  const now = new Date().toISOString();
-  return [
-    {
-      id: `draft_${opportunityId}_helpful`,
-      opportunityId,
-      style: 'helpful_consultative',
-      body: `Helpful angle to review manually: answer ${comment.authorDisplayName}'s question with one concrete next step, then point to a relevant public resource if one exists.`,
-      complianceNotes: ['Manual approval required', 'No earnings guarantee', 'Do not ask for private data in public comments'],
-      createdAt: now,
-      createdBy: 'template_import',
-    },
-  ];
-}

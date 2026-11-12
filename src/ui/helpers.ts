@@ -1,5 +1,6 @@
 import { leadBucket } from '../scoring/leadBuckets.js';
-import type { DraftStyle, FreshnessWindow, LocalStatus, NicheProfile, OpportunityType, ReplyDraft, ReviewTab, ScanSummary, ScoredFixture } from './types';
+import { safeDraftsForOpportunity } from '../scoring/draftSafety.js';
+import type { FreshnessWindow, LocalStatus, NicheProfile, OpportunityType, ReviewTab, ScanSummary, ScoredFixture } from './types';
 
 export const NICHES: Array<{ id: NicheProfile; label: string; phrase: string; finds: string }> = [
   { id: 'affiliate_marketing', label: 'Affiliate marketing', phrase: 'affiliate marketing', finds: 'People asking how to start or grow with affiliate links, sites and commissions.' },
@@ -80,13 +81,9 @@ export const dimensionLabels: Record<string, string> = {
 };
 
 export const replyStyleLabels: Record<string, string> = {
-  helpful_consultative: 'Helpful',
-  concise_resource: 'Short',
-  content_follow_up: 'Content idea',
-  risk_aware_decline: 'Careful wording',
-  ai_short_helpful: 'Short',
-  ai_consultative: 'Helpful',
-  ai_content_angle: 'Content idea',
+  ai_short_helpful: 'Short answer',
+  ai_consultative: 'Detailed answer',
+  ai_content_angle: 'Video idea',
 };
 
 // Niche-scan "not a fit" items carry lowFitReason; older items do not.
@@ -99,7 +96,7 @@ export function situationDetails(item: ScoredFixture): string[] {
 }
 
 export function reviewBucket(item: ScoredFixture, status: LocalStatus) {
-  return leadBucket({ opportunityType: item.score.opportunityType, overallScore: item.score.overallScore, riskLevel: item.score.riskLevel, status });
+  return leadBucket({ opportunityType: item.score.opportunityType, overallScore: item.score.overallScore, riskLevel: item.score.riskLevel, leadFit: item.score.leadFit, status });
 }
 
 export function matchesTab(item: ScoredFixture, status: LocalStatus, tab: ReviewTab) {
@@ -132,7 +129,11 @@ export function isWithinAge(item: ScoredFixture, window: FreshnessWindow) {
 }
 
 export function whyThisMatters(item: ScoredFixture) {
-  if (item.score.opportunityType === 'niche_lead') return `This person is asking for help with ${item.score.nicheProfileLabel || 'the video topic'}. Check their situation below and answer only what they asked, without a sales pitch.`;
+  if (item.score.opportunityType === 'niche_lead') {
+    const niche = NICHES.find((entry) => entry.label.toLowerCase() === item.score.nicheProfileLabel?.toLowerCase())?.phrase
+      || item.score.nicheProfileLabel?.replace(/^./, (letter) => letter.toLowerCase()) || 'the video topic';
+    return `This person is asking for help with ${niche}. Check their situation below and answer only what they asked, without a sales pitch.`;
+  }
   if (isNoise(item)) return `Not a fit: ${item.score.summary}`;
   if (item.score.opportunityType === 'affiliate_publisher_opportunity') return 'A site owner or creator asking about affiliate links, commissions, tracking, or turning traffic into sales.';
   if (item.score.opportunityType === 'consumer_buyer_question') return 'Someone deciding what to buy, comparing options, or asking if a product is worth it.';
@@ -143,7 +144,10 @@ export function nextBestAction(item: ScoredFixture) {
   const days = commentAgeDays(item);
   if (item.score.riskLevel === 'high' || item.score.recommendedAction === 'reject_as_spam') return 'Skip it';
   if (item.score.opportunityType === 'low_fit_comment') return 'No reply needed';
-  if (days !== null && days > 14) return 'Older comment: reply only if the thread is still active';
+  if (days !== null && days > 30) return `${ageLabel(item)}: old comment, use for ideas`;
+  if (days !== null && days >= 14) return `${ageLabel(item)}: reply only if the thread is still active`;
+  if (item.score.recommendedAction === 'save_content_idea') return 'Consider a video idea';
+  if (item.score.leadFit === 'maybe') return 'Review before replying';
   if (item.score.opportunityType === 'niche_lead' || item.score.overallScore >= 68) return 'Write a helpful reply';
   return 'Worth a look';
 }
@@ -217,30 +221,8 @@ export function exportOpportunitiesCsv(items: ScoredFixture[], statuses: Record<
   URL.revokeObjectURL(url);
 }
 
-function draftForStyle(item: ScoredFixture, style: DraftStyle): ReplyDraft {
-  const topic = item.score.nicheProfileLabel || item.video.topic.replaceAll('_', ' ');
-  const offer = item.score.detectedOfferFit[0] ? item.score.detectedOfferFit[0].replaceAll('_', ' ') : topic;
-  if (style === 'helpful_consultative') {
-    return { id: `${item.opportunity.id}_generated_consultative`, style, body: `A good reply would acknowledge ${item.comment.authorDisplayName}'s question, give one practical first step for ${topic}, and invite them to compare it with their own situation, without asking for private details in public.`, complianceNotes: ['You approve every reply', 'No promised results', 'No private details'] };
-  }
-  if (style === 'concise_resource') {
-    return { id: `${item.opportunity.id}_generated_concise`, style, body: `Short version: point them to a checklist or simple framework for ${offer}, and remind them to judge it against their own situation first.`, complianceNotes: ['Helpful pointer, not a pitch', 'No pressure'] };
-  }
-  if (style === 'content_follow_up') {
-    return { id: `${item.opportunity.id}_generated_content_follow_up`, style, body: `This could become a short video or post: answer the question for ${topic} using the general problem, not this person's details.`, complianceNotes: ['Content idea, not a reply', 'Keep the commenter anonymous'] };
-  }
-  return { id: `${item.opportunity.id}_generated_risk_aware`, style, body: 'Use careful wording: acknowledge the concern, avoid promises or regulated advice, and keep it educational rather than promotional.', complianceNotes: ['Extra care needed', 'No promised results', 'No sensitive details in public'] };
-}
-
 export function makeDrafts(item: ScoredFixture) {
-  const drafts = (item.opportunity.replyDrafts ?? []).filter((draft) => !draft.opportunityId || draft.opportunityId === item.opportunity.id);
-  for (const style of ['helpful_consultative', 'concise_resource', 'content_follow_up'] as DraftStyle[]) {
-    if (!drafts.some((draft) => draft.style === style) && item.score.recommendedAction !== 'reject_as_spam') drafts.push(draftForStyle(item, style));
-  }
-  if ((item.score.riskLevel !== 'low' || item.score.recommendedAction === 'reject_as_spam') && !drafts.some((draft) => draft.style === 'risk_aware_decline')) {
-    drafts.push(draftForStyle(item, 'risk_aware_decline'));
-  }
-  return drafts;
+  return safeDraftsForOpportunity(item.opportunity.replyDrafts ?? [], item.opportunity.id);
 }
 
 export function transitionOptions(status: LocalStatus, riskLevel: ScoredFixture['score']['riskLevel']) {
@@ -289,6 +271,7 @@ export function normaliseImportedOpportunity(raw: any): ScoredFixture {
       summary: raw.summary || 'Imported YouTube comment.',
       opportunityType: raw.opportunityType || 'low_fit_comment',
       opportunityTypeLabel: raw.opportunityTypeLabel || typeLabels[raw.opportunityType as OpportunityType] || 'Imported comment',
+      leadFit: raw.leadFit || null,
       recommendedAction: raw.recommendedAction || 'reply',
       detectedOfferFit: raw.detectedOfferFit || [],
       evidenceSnippets: raw.evidenceSnippets || [],
@@ -326,6 +309,8 @@ export function buildScanSummary(source: ScanSummary['source'], items: ScoredFix
   return {
     source,
     title: run.title,
+    startedAt: run.startedAt,
+    candidatesConsidered: body.candidatesConsidered ?? null,
     headline: headlineFor(counts),
     best: counts.best,
     maybe: counts.maybe,

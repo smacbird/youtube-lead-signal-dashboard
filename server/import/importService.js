@@ -1,6 +1,6 @@
 import { scoreSampleItem } from '../../src/scoring/scoring.js';
 import { clampImportOptions, IMPORT_LIMITS } from './limits.js';
-import { makeReplyDrafts, makeScoringItem, normalizeCommentThreadFromYouTube, normalizeVideoFromYouTube } from './normalize.js';
+import { makeScoringItem, normalizeCommentThreadFromYouTube, normalizeVideoFromYouTube } from './normalize.js';
 import { parseManyYouTubeVideoInputs } from '../youtube/url.js';
 import { nicheScoreBoost, resolveNicheProfile } from '../youtube/nicheProfiles.js';
 import { scoreNicheLead } from '../scoring/nicheLead.js';
@@ -74,8 +74,7 @@ function scoreAndPersist({ state, video, record, metadata, options }) {
         createdAt: now,
         updatedAt: now,
       };
-      const drafts = makeReplyDrafts(opportunityId, upsert.record);
-      persistScoredOpportunity(state, opportunity, nicheDimensions, drafts);
+      persistScoredOpportunity(state, opportunity, nicheDimensions);
       return opportunityId;
     }
 
@@ -105,8 +104,7 @@ function scoreAndPersist({ state, video, record, metadata, options }) {
         ? 'affiliate_publisher_opportunity'
         : 'consumer_buyer_question'),
     };
-    const drafts = makeReplyDrafts(opportunityId, upsert.record);
-    persistScoredOpportunity(state, opportunity, score.scoreDimensions, drafts);
+    persistScoredOpportunity(state, opportunity, score.scoreDimensions);
     return opportunityId;
 }
 

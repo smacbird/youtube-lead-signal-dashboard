@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { canPrepareReply, isRealAIDraft } from '../../src/scoring/draftSafety.js';
 
 const DEFAULT_STORE_PATH = resolve(process.cwd(), 'data/import-store.json');
 const VALID_STATUSES = new Set(['new', 'reviewed', 'approved', 'rejected', 'replied']);
@@ -163,7 +164,16 @@ export class JsonImportStore {
 
   async transitionStatus(opportunityId, toStatus, { changedBy = 'operator_manual', note = '' } = {}) {
     if (!VALID_STATUSES.has(toStatus)) throw new Error(`invalid_status:${toStatus}`);
-    return this.mutate((store) => transitionOpportunityStatus(store, opportunityId, toStatus, { changedBy, note }));
+    return this.mutate((store) => {
+      if (toStatus === 'approved' && store.opportunities[opportunityId]?.sourceType === 'youtube_import') {
+        const opportunity = store.opportunities[opportunityId];
+        if (opportunity.opportunityType === 'low_fit_comment' || ['replied', 'rejected'].includes(opportunity.status))
+          throw new Error('reply_only_for_open_leads');
+        if (!canPrepareReply(Object.values(store.replyDrafts), opportunityId))
+          throw new Error('reply_ideas_need_openai_key');
+      }
+      return transitionOpportunityStatus(store, opportunityId, toStatus, { changedBy, note });
+    });
   }
 
   async setSelectedDraft(opportunityId, draftId) {
@@ -171,7 +181,7 @@ export class JsonImportStore {
       const opportunity = store.opportunities[opportunityId];
       if (!opportunity) throw new Error(`opportunity_not_found:${opportunityId}`);
       const draft = store.replyDrafts[draftId];
-      if (!draft || draft.opportunityId !== opportunityId) throw new Error(`draft_not_found:${draftId}`);
+      if (!isRealAIDraft(draft, opportunityId)) throw new Error(`draft_not_found:${draftId}`);
       opportunity.selectedDraftId = draftId;
       opportunity.updatedAt = new Date().toISOString();
       return hydrateOpportunity(store, opportunityId);

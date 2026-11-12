@@ -4,6 +4,8 @@ import sampleData from '../data/sample-comments.json';
 import { scoreSampleItems } from './scoring/scoring.js';
 import { apiJson, setCsrfToken } from './ui/api';
 import { pickSelectedItem } from './ui/draftSelection.js';
+import { shouldAutoDraft } from './ui/autoDraft.js';
+import { safeDraftsForOpportunity } from './scoring/draftSafety.js';
 import { buildScanSummary, exportOpportunitiesCsv, isWithinAge, matchesTab, nicheLabel, nichePhrase, normaliseImportedOpportunity, statusLabels, typeLabels } from './ui/helpers';
 import { AppHeader, StepProgress, StepSection, type StepState } from './ui/layout';
 import { NichePicker } from './ui/nicheStep';
@@ -52,6 +54,10 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({ defaultScanDepth: 5, defaultFreshnessDays: 30, replyTone: 'Helpful, concise, practical', enabledNiches: ALL_NICHES });
   const replyRef = useRef<HTMLDivElement | null>(null);
+  const attemptedAutoDrafts = useRef(new Set<string>());
+  const draftQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const selectedIdLive = useRef<string | undefined>(undefined);
+  const [draftFeedback, setDraftFeedback] = useState<{ id: string; writing: boolean; error?: string } | null>(null);
 
   useEffect(() => {
     apiJson('/api/config').then(setHealthConfig).catch((error) => console.warn('Configuration check failed safely', error));
@@ -108,9 +114,32 @@ function App() {
   }, [ageFiltered, tabs, statuses]);
   const visible = useMemo(() => ageFiltered.filter((item) => matchesTab(item, statusOf(item), tab)), [ageFiltered, tab, statuses]);
   const selected = pickSelectedItem(visible, selectedId);
+  selectedIdLive.current = selected?.id;
   const nicheLeadCount = items.filter((item) => item.score.opportunityType === 'niche_lead').length;
 
   useEffect(() => { if (!tabs.includes(tab)) setTab('best'); }, [tabs, tab]);
+
+  // Debounce navigation and serialize generation so rapid clicks never create multiple
+  // simultaneous paid requests. The server caches AI drafts per opportunity as well.
+  useEffect(() => {
+    if (!shouldAutoDraft(selected, selected && statusOf(selected), {
+      hasKey: Boolean(healthConfig.aiDraftsConfigured), isDemo,
+      attempted: selected ? attemptedAutoDrafts.current.has(selected.id) : false,
+    })) return;
+    const id = selected!.id;
+    setDraftFeedback({ id, writing: true });
+    const timer = window.setTimeout(() => {
+      const job = draftQueue.current.then(async () => {
+        if (selectedIdLive.current !== id) return;
+        attemptedAutoDrafts.current.add(id);
+        await fetchDraftFor(id, false);
+      });
+      draftQueue.current = job.catch(() => {});
+      job.then(() => setDraftFeedback({ id, writing: false }))
+        .catch((error) => setDraftFeedback({ id, writing: false, error: error instanceof Error ? error.message : 'Reply ideas need the OpenAI key or a working connection.' }));
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [selected?.id, items, statuses, healthConfig.aiDraftsConfigured, isDemo]);
 
   const stepStates: StepState[] = [
     nicheChosen || items.length ? 'done' : 'current',
@@ -199,13 +228,23 @@ function App() {
       .catch((error) => console.warn('Saving selected draft failed safely', error));
   }
 
-  async function generateDrafts() {
-    if (!selected) return;
-    if (isDemo) throw new Error('Demo comments cannot get new ideas. Run a real scan first.');
-    const body = await apiJson(`/api/opportunities/${encodeURIComponent(selected.id)}/ai-drafts`, { method: 'POST', body: JSON.stringify({}) });
+  async function fetchDraftFor(id: string, force: boolean) {
+    const body = await apiJson(`/api/opportunities/${encodeURIComponent(id)}/ai-drafts`, { method: 'POST', body: JSON.stringify({ force }) });
     const updated = normaliseImportedOpportunity(body.item);
-    setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-    setSelectedDrafts((current) => ({ ...current, [updated.id]: updated.opportunity.replyDrafts[0]?.id || current[updated.id] }));
+    const safe = safeDraftsForOpportunity(updated.opportunity.replyDrafts, id);
+    const answer = safe.find((draft) => draft.style === 'ai_short_helpful')
+      || safe.find((draft) => draft.style === 'ai_consultative');
+    setItems((current) => current.map((item) => item.id === id ? updated : item));
+    if (answer) setSelectedDrafts((current) => ({ ...current, [id]: answer.id }));
+  }
+
+  async function generateDrafts() {
+    if (!selected || isDemo) throw new Error('Reply ideas need a real lead and the OpenAI key.');
+    if (!healthConfig.aiDraftsConfigured) throw new Error('Reply ideas need the OpenAI key.');
+    const id = selected.id;
+    const job = draftQueue.current.then(() => fetchDraftFor(id, true));
+    draftQueue.current = job.catch(() => {});
+    await job;
   }
 
   async function signOut() {
@@ -225,6 +264,7 @@ function App() {
         onExport={() => exportOpportunitiesCsv(visible.length ? visible : items, statuses)}
         exportDisabled={!items.length}
         onSignOut={signOut}
+        onReset={resetForNewScan}
       />
       {showSettings && <SettingsPanel settings={settings} onChange={setSettings} onClose={() => setShowSettings(false)} />}
 
@@ -248,13 +288,13 @@ function App() {
           help={`Pick a size and press the button. We read public comments on recent ${nichePhrase(niche)} videos; nothing is posted.`}>
           <ScanPanel niche={niche} settings={settings} onResult={applyResult} onReset={resetForNewScan} hasResults={items.length > 0} />
         </StepSection>
-        {summary && !isDemo && <ScanResultCard summary={summary} onShow={(next) => { setTab(next); setSelectedId(undefined); sessionStorage.removeItem(SELECTED_LEAD_KEY); setExpandedStep(3); scrollToStep(3); }} />}
 
         <StepSection n={3} state={expandedStep === 3 ? 'current' : stepStates[2]} collapsed={stepStates[2] === 'done' && expandedStep !== 3}
           summary={selected ? `Reviewing: ${selected.comment.authorDisplayName}` : `${items.length} comments to review`}
           onChange={() => { setExpandedStep(3); scrollToStep(3); }}
           help="Start with Best leads. Click a comment to see why it was picked and to write your reply."
           aside={items.length > 0 ? <AgeFilter value={age} onChange={setAge} /> : undefined}>
+          {summary && !isDemo && <ScanResultCard summary={summary} onShow={(next) => { setTab(next); setSelectedId(undefined); sessionStorage.removeItem(SELECTED_LEAD_KEY); setExpandedStep(3); scrollToStep(3); }} />}
           {isDemo && <p className="demo-banner">You are looking at demo comments. Run a scan in Step 2 to see real ones.</p>}
           {items.length > 0 && <ReviewTabs tabs={tabs} active={tab} counts={counts} onChange={(next) => { setTab(next); setSelectedId(undefined); sessionStorage.removeItem(SELECTED_LEAD_KEY); setExpandedStep(3); }} />}
           {items.length > 0 && (
@@ -296,7 +336,7 @@ function App() {
           </div>
         </StepSection>
         <div ref={replyRef}>
-          <StepSection n={4} state={expandedStep === 4 ? 'current' : stepStates[3]} collapsed={stepStates[3] === 'done' && expandedStep !== 4}
+          <StepSection n={4} state={expandedStep === 4 ? 'current' : stepStates[3]} badgeText={selected ? 'You are here' : 'Pick a lead first'} collapsed={stepStates[3] === 'done' && expandedStep !== 4}
             summary={selected ? `Reply to ${selected.comment.authorDisplayName}` : 'Pick a lead to reply to'}
             onChange={() => { setExpandedStep(4); scrollToStep(4); }}
             help="Pick a reply idea, copy it, post it on YouTube yourself, then mark it done.">
@@ -310,6 +350,8 @@ function App() {
                   onSelectDraft={selectDraft}
                   onTransition={updateStatus}
                   onGenerateDrafts={generateDrafts}
+                  autoWriting={draftFeedback?.id === selected.id && draftFeedback.writing}
+                  draftError={draftFeedback?.id === selected.id ? draftFeedback.error : undefined}
                   initialScoreOpen={selected.id === firstLeadId}
                 />
               ) : <p className="empty-state">Pick a comment in Step 3 to reply to it.</p>}
@@ -338,7 +380,7 @@ function StandaloneModeGate({ children }: { children: React.ReactNode }) {
     <main className="standalone-only-shell">
       <section className="standalone-only-card">
         <span className="eyebrow">Open in its own tab</span>
-        <h1>Open The Best Lead System in a normal browser tab</h1>
+        <h1>Open Best Lead System AI in a normal browser tab</h1>
         <p>YouTube links do not work inside an embedded preview, so this app only runs in its own tab.</p>
         <div className="standalone-actions big">
           <button className="source-button primary" type="button" onClick={leaveIframe}>Open in a new tab</button>

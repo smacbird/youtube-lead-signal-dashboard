@@ -186,7 +186,9 @@ export function ScanResultCard({ summary, onShow }: { summary: ScanSummary; onSh
         <div>
           <span className="eyebrow">{sourceText}</span>
           <h3 id="result-title">{summary.headline}</h3>
-          {summary.title && <small className="workflow-note">{summary.title}</small>}
+          {summary.startedAt && <small className="workflow-note">Scanned {new Date(summary.startedAt).toLocaleString()} (your local time).</small>}
+          {summary.candidatesConsidered != null && summary.videos !== null && <p className="workflow-note">{summary.videos} of {summary.candidatesConsidered} searched videos had enough comments to make the scan shortlist.</p>}
+          {!summary.startedAt && summary.title && <small className="workflow-note">{summary.title}</small>}
         </div>
       </div>
       <div className="summary-grid">

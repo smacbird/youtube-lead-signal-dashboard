@@ -151,12 +151,13 @@ try {
   }
 
   // Shared bucket rule.
-  assert.equal(leadBucket({ opportunityType: 'niche_lead', overallScore: 50 }), 'best');
+  assert.equal(leadBucket({ opportunityType: 'niche_lead', overallScore: 50 }), 'maybe');
+  assert.equal(leadBucket({ opportunityType: 'niche_lead', overallScore: 85, leadFit: 'best' }), 'best');
   assert.equal(leadBucket({ opportunityType: 'niche_lead', overallScore: 70, riskLevel: 'high' }), 'maybe');
   assert.equal(leadBucket({ opportunityType: 'consumer_buyer_question', overallScore: 30 }), 'maybe');
   assert.equal(leadBucket({ opportunityType: 'low_fit_comment', overallScore: 10 }), 'not_fit');
   assert.equal(leadBucket({ opportunityType: 'niche_lead', status: 'replied' }), 'done');
-  assert.equal(bucketCounts([{ opportunityType: 'niche_lead' }, { opportunityType: 'low_fit_comment' }]).headline, '1 lead + 1 not a fit');
+  assert.equal(bucketCounts([{ opportunityType: 'niche_lead', overallScore: 85, leadFit: 'best' }, { opportunityType: 'low_fit_comment' }]).headline, '1 lead + 1 not a fit');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
 }

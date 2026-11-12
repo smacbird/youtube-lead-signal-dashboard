@@ -1,7 +1,7 @@
 // Niche-lead scoring for niche scans (imports that carry a profileId).
 // Manual URL imports keep using src/scoring/scoring.js unchanged.
 import { RISK_KEYWORDS } from '../../src/scoring/scoring.js';
-import { resolveNicheProfile } from '../youtube/nicheProfiles.js';
+import { NICHE_PROFILES, resolveNicheProfile } from '../youtube/nicheProfiles.js';
 
 export const NICHE_LEAD_TYPE_LABELS = {
   niche_lead: 'Niche lead',
@@ -36,6 +36,11 @@ const POSITIVE_SIGNALS = [
       /\b(first|1st)\s+step\b/,
       /\bjust\s+(starting|started|beginning)\b/,
       /\bstart(ing)?\s+(my|a|an|our)\s+(own\s+)?(online\s+|home\s+|small\s+)?(business|side hustle|blog|website|channel|store|shop)\b/,
+      /\b(i'?m|i am)\s+(new|a (complete|total) beginner)\b/,
+      /\bnew\s+(to\s+(this|it|the\s+\w+)|and\s+(want\s+to\s+)?get\s+into\s+it)\b/,
+      /\b(just\s+)?getting\s+into\b/,
+      /\b(complete\s+beginner|zero\s+experience)\b/,
+      /\bbefore\s+(?:the\s+)?(?:holidays?|christmas|thanksgiving|black\s+friday|new\s+year|\w+\s+\d{1,2})\s+i\s+(want|need|plan)\s+to\s+(start|begin|get\s+into)\b/,
     ],
   },
   {
@@ -83,6 +88,8 @@ const POSITIVE_SIGNALS = [
       /\bi\s+(have|got)\s+no\s+[a-z]+(\s+[a-z]+)?/,
       /\bi\s+(don'?t|do not|dont)\s+have\s+(a|any|much)\s+[a-z]+/,
       /\bno\s+(experience|website|money|budget|skills|audience|followers|degree|capital|savings)\b/,
+      /\bzero\s+experience\b/,
+      /\bnew\s+to\s+(this|it|\w+)\b/,
       /\bstay[- ]at[- ]home\s+(mom|mum|dad|parent|mother|father)\b/,
       /\b(single|working)\s+(mom|mum|dad|parent|mother)\b/,
       /\bsahm\b/,
@@ -116,6 +123,21 @@ const POSITIVE_SIGNALS = [
     ],
   },
 ];
+
+const CREATOR_VIDEO_REQUEST = /\b(?:can\s+you|could\s+you|would\s+you|please|do|make|create|post)\b.{0,45}\b(?:make|create|do|post)?\s*(?:a|another|more)?\s*(?:video|tutorial|walkthrough)\b(?:\s+(?:on|about|for))?/;
+const CROSS_NICHE_GENERIC = new Set(['beginner', 'legit', 'scam', 'startup', 'investment', 'software', 'traffic', 'worth it', 'profit', 'automation']);
+
+function differentBusiness(profileId, text, currentMatches) {
+  if (profileId !== 'biz_opp' && /\b(?:amazon\s+fba|fba\s+inventory|fba)\b/.test(text)) return 'FBA';
+  if (profileId !== 'biz_opp' && /\bdropship(?:ping)?\b/.test(text)) return 'dropshipping';
+  if (currentMatches.length) return null;
+  for (const [id, profile] of Object.entries(NICHE_PROFILES)) {
+    if (id === profileId) continue;
+    const match = (profile.keywords || []).find((keyword) => keyword.length >= 8 && !CROSS_NICHE_GENERIC.has(keyword) && phraseRegex(keyword).test(text));
+    if (match) return profile.label;
+  }
+  return null;
+}
 
 const QUESTION_START = /^(how|what|where|which|who|why|when|is|are|can|could|does|do|did|should|would|will|anyone|any)\b/;
 
@@ -219,6 +241,8 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
   const intentSum = signals.reduce((sum, signal) => sum + signal.weight, 0);
   const nicheMatched = nicheKeywordMatches(profileId, lower);
   const nicheBoost = Math.min(3, nicheMatched.length) * 8;
+  const creatorVideoRequest = CREATOR_VIDEO_REQUEST.test(lower);
+  const otherBusiness = differentBusiness(profileId, lower, nicheMatched);
 
   const riskMatches = RISK_REGEXES.filter(({ regex }) => regex.test(`${String(authorDisplayName).toLowerCase()} ${lower}`)).map(({ keyword }) => keyword);
   const selfPromoMatch = firstMatch(lower, SELF_PROMO_PATTERNS);
@@ -243,7 +267,8 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
   else if (isPraise && !intentSum && !hasQuestion) lowFitReason = 'praise_only';
   else if (words < 3 && !intentSum) lowFitReason = 'too_short';
   else {
-    const qualifies = (intentSum >= 18 && positive >= 30) || (hasQuestion && nicheMatched.length >= 1 && positive >= 26);
+    const qualifies = (intentSum >= 24 && positive >= 24) || (intentSum >= 18 && positive >= 30)
+      || (hasQuestion && nicheMatched.length >= 1 && positive >= 26);
     if (!qualifies) {
       if (words < 4 && !hasQuestion) lowFitReason = 'too_short';
       else if (hasQuestion) lowFitReason = 'generic_question';
@@ -258,19 +283,30 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
   const riskLevel = riskScore >= 70 ? 'high' : riskScore >= 30 ? 'medium' : 'low';
   const engagement = (likeCount >= 5 ? 3 : 0) + (replyCount >= 2 ? 3 : 0);
 
+  // A specific request for more videos is a content idea, not a strong reply lead.
+  if (creatorVideoRequest && ['generic_question', 'off_topic', 'too_short'].includes(lowFitReason)) lowFitReason = null;
   const opportunityType = lowFitReason ? 'low_fit_comment' : 'niche_lead';
   let overallScore;
   if (opportunityType === 'niche_lead') {
     overallScore = clamp(28 + positive + engagement - Math.min(16, riskMatches.length * 8));
+    if (creatorVideoRequest) overallScore = Math.max(45, Math.min(overallScore, 54));
+    else if (otherBusiness) overallScore = Math.min(overallScore, 54);
   } else if (isSpam) {
     overallScore = 0;
   } else {
     overallScore = clamp(Math.min(34, Math.max(0, positive) * 0.5));
   }
 
+  const leadFit = opportunityType === 'niche_lead'
+    ? (!creatorVideoRequest && !otherBusiness && riskLevel !== 'high' && overallScore >= 68
+      && (hasQuestion || (signals.some((signal) => signal.key === 'startIntent') && nicheMatched.length > 0)) ? 'best' : 'maybe')
+    : null;
+
   // Evidence and human-readable reason.
   const evidenceSnippets = [];
   for (const signal of signals) evidenceSnippets.push(snippetFrom(original, signal.match));
+  if (creatorVideoRequest) evidenceSnippets.push(snippetFrom(original, lower.match(CREATOR_VIDEO_REQUEST)?.[0] || 'video'));
+  if (otherBusiness) evidenceSnippets.push(`Different business: ${otherBusiness}`);
   if (nicheMatched.length) evidenceSnippets.push(`Niche match: ${nicheMatched.slice(0, 4).join(', ')}`);
   if (riskMatches.length) evidenceSnippets.push(`Risk phrase: ${riskMatches.slice(0, 3).join(', ')}`);
   if (lowFitDetail && lowFitReason === 'self_promotion') evidenceSnippets.push(`Promo cue: ${lowFitDetail}`);
@@ -292,8 +328,11 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
     } else {
       headline = `Asks a ${profile.label.toLowerCase()} question`;
     }
-    summary = `${headline}.`;
-    if (nicheMatched.length) summary += ` Niche match: ${nicheMatched.slice(0, 3).join(', ')}.`;
+    summary = creatorVideoRequest ? 'Asks the creator for a video; useful as a content idea, not a direct reply lead.'
+      : otherBusiness ? `About a different business (${otherBusiness}); ${headline.toLowerCase()}. Check fit before replying.`
+      : `${headline}.`;
+    if (!creatorVideoRequest && !otherBusiness && nicheMatched.length) summary += ` Niche match: ${nicheMatched.slice(0, 3).join(', ')}.`;
+    if (leadFit === 'maybe' && !creatorVideoRequest && !otherBusiness) summary += ' Some interest, but not a clear next-step request yet.';
     if (riskMatches.length) summary += ` Caution: mentions "${riskMatches.slice(0, 2).join('", "')}"; reply conservatively.`;
   } else {
     const base = LOW_FIT_REASONS[lowFitReason];
@@ -308,7 +347,7 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
   let recommendedAction;
   if (isSpam) recommendedAction = 'reject_as_spam';
   else if (opportunityType === 'low_fit_comment') recommendedAction = 'ignore';
-  else recommendedAction = 'reply';
+  else recommendedAction = creatorVideoRequest ? 'save_content_idea' : leadFit === 'maybe' ? 'research_author' : 'reply';
 
   const signalScore = (key) => (signals.some((s) => s.key === key) ? 80 : 0);
   const scoreDimensions = [
@@ -326,6 +365,7 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
   return {
     opportunityType,
     opportunityTypeLabel: NICHE_LEAD_TYPE_LABELS[opportunityType],
+    leadFit,
     overallScore,
     priority: priorityFor(overallScore, riskLevel),
     riskLevel,

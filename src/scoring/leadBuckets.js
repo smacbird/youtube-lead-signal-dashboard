@@ -5,14 +5,16 @@ export const DONE_STATUSES = ['replied', 'rejected'];
 export const BEST_MIN_SCORE = 45;
 
 /**
- * @param {{ opportunityType?: string, overallScore?: number, riskLevel?: string, status?: string }} item
+ * @param {{ opportunityType?: string, overallScore?: number, riskLevel?: string, status?: string, leadFit?: string }} item
  * @returns {'best' | 'maybe' | 'not_fit' | 'done'}
  */
-export function leadBucket({ opportunityType, overallScore = 0, riskLevel = 'low', status = 'new' } = {}) {
+export function leadBucket({ opportunityType, overallScore = 0, riskLevel = 'low', status = 'new', leadFit } = {}) {
   if (DONE_STATUSES.includes(status)) return 'done';
   if (opportunityType === 'low_fit_comment' || !opportunityType) return 'not_fit';
-  if (riskLevel === 'high') return 'maybe';
-  if (opportunityType === 'niche_lead' || (Number(overallScore) || 0) >= BEST_MIN_SCORE) return 'best';
+  if (riskLevel === 'high' || leadFit === 'maybe') return 'maybe';
+  if (leadFit === 'best') return 'best';
+  if (opportunityType === 'niche_lead') return Number(overallScore) >= 68 ? 'best' : 'maybe';
+  if ((Number(overallScore) || 0) >= BEST_MIN_SCORE) return 'best';
   return 'maybe';
 }
 

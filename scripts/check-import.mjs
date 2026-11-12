@@ -101,7 +101,17 @@ try {
   assert.ok(opportunities[0].overallScore >= 0 && opportunities[0].overallScore <= 100);
   assert.ok(opportunities[0].scoreDimensions.length > 0);
   assert.equal(opportunities[0].status, 'new');
-  assert.equal(opportunities[0].selectedDraftId, opportunities[0].replyDrafts[0].id);
+  assert.equal(opportunities[0].selectedDraftId, null, 'new imports have no selected placeholder draft');
+  assert.deepEqual(opportunities[0].replyDrafts, [], 'new imports do not persist template coaching text');
+  await assert.rejects(() => store.transitionStatus(opportunities[0].id, 'approved'), /reply_ideas_need_openai_key/, 'cannot mark imported reply ready without a real AI answer');
+  await store.mutate((data) => {
+    data.replyDrafts.legacy_placeholder = {
+      id: 'legacy_placeholder', opportunityId: opportunities[0].id, style: 'helpful_consultative',
+      createdBy: 'template_import', body: 'Helpful angle to review manually: answer their question',
+    };
+  });
+  await assert.rejects(() => store.setSelectedDraft(opportunities[0].id, 'legacy_placeholder'), /draft_not_found/, 'old saved placeholder cannot be selected');
+  await assert.rejects(() => store.transitionStatus(opportunities[0].id, 'approved'), /reply_ideas_need_openai_key/, 'legacy placeholder cannot unlock reply ready');
 
   const replied = await store.markManuallyReplied(opportunities[0].id, 'Operator replied directly on YouTube.');
   assert.equal(replied.status, 'replied');

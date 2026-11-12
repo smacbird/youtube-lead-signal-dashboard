@@ -58,7 +58,7 @@ export const NICHE_PROFILES = {
     label: 'Business opportunity / biz opp',
     leadCategory: 'business opportunity evaluation',
     replyStyle: 'cautious and due-diligence focused, avoid hype, emphasize proof, costs, risks, and legitimacy checks',
-    keywords: ['business opportunity', 'biz opp', 'franchise', 'startup', 'investment', 'legit', 'scam', 'business model', 'cost to start', 'profit'],
+    keywords: ['business opportunity', 'biz opp', 'franchise', 'amazon fba', 'fba inventory', 'dropshipping', 'startup', 'investment', 'legit', 'scam', 'business model', 'cost to start', 'profit'],
     queries: [
       'business opportunity for beginners',
       'small business ideas from home',

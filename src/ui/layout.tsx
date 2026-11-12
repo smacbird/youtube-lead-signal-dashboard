@@ -11,17 +11,18 @@ export const STEPS = [
 
 const stateText: Record<StepState, string> = { done: 'Finished', current: 'You are here', upcoming: 'Next' };
 
-export function AppHeader({ leadCount, onSettings, settingsOpen, onExport, exportDisabled, onSignOut }: { leadCount: number | null; onSettings: () => void; settingsOpen: boolean; onExport: () => void; exportDisabled: boolean; onSignOut: () => void }) {
+export function AppHeader({ leadCount, onSettings, settingsOpen, onExport, exportDisabled, onSignOut, onReset }: { leadCount: number | null; onSettings: () => void; settingsOpen: boolean; onExport: () => void; exportDisabled: boolean; onSignOut: () => void; onReset: () => void }) {
   return (
     <header className="app-header">
       <div className="brand">
-        <strong>The Best Lead System</strong>
+        <strong>Best Lead System AI</strong>
         <span>Find people on YouTube asking for help, and reply to them yourself.</span>
       </div>
       {leadCount !== null && (
         <p className="header-leads" aria-live="polite"><strong>{leadCount}</strong> lead{leadCount === 1 ? '' : 's'} found</p>
       )}
       <nav className="header-menu" aria-label="Account and tools">
+        <button type="button" className="header-button header-reset" onClick={onReset} title="Clear this screen and start over. Saved scans are kept.">Reset for new scan</button>
         <button type="button" className="header-button" aria-expanded={settingsOpen} aria-controls="settings-panel" onClick={onSettings}>Settings</button>
         <button type="button" className="header-button" onClick={onExport} disabled={exportDisabled} title={exportDisabled ? 'Run or load a scan first' : 'Download the comments shown in Step 3'}>Export CSV</button>
         <button type="button" className="header-button" onClick={onSignOut}>Sign out</button>
@@ -50,7 +51,7 @@ export function StepProgress({ states, activeStep, onNavigate }: { states: StepS
   );
 }
 
-export function StepSection({ n, state, help, children, aside, collapsed = false, summary, onChange }: { n: number; state: StepState; help: string; children: React.ReactNode; aside?: React.ReactNode; collapsed?: boolean; summary?: string; onChange?: () => void }) {
+export function StepSection({ n, state, help, children, aside, collapsed = false, summary, onChange, badgeText }: { n: number; state: StepState; help: string; children: React.ReactNode; aside?: React.ReactNode; collapsed?: boolean; summary?: string; onChange?: () => void; badgeText?: string }) {
   const step = STEPS[n - 1];
   return (
     <section id={`step-${n}`} className={`step-section ${state}${collapsed ? ' collapsed' : ''}`} aria-labelledby={`step-${n}-title`}>
@@ -61,7 +62,7 @@ export function StepSection({ n, state, help, children, aside, collapsed = false
         </div>
       ) : <><div className="step-heading">
         <div>
-          <span className="step-badge">Step {n} of 4 · {stateText[state]}</span>
+          <span className="step-badge">Step {n} of 4 · {badgeText || stateText[state]}</span>
           <h2 id={`step-${n}-title`} tabIndex={-1}>{step.title}</h2>
           <p className="step-help">{help}</p>
         </div>

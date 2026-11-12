@@ -8,12 +8,15 @@ import { importYouTubeVideos } from './import/importService.js';
 import { YouTubeReadOnlyClient } from './youtube/client.js';
 import { listNicheProfiles } from './youtube/nicheProfiles.js';
 import { generateReplyDrafts } from './ai/draftGenerator.js';
+import { canPrepareReply, isRealAIDraft } from '../src/scoring/draftSafety.js';
 import { createAuth } from './auth.js';
 
 const PORT = Number(process.env.PORT || 4174);
 const store = new JsonImportStore();
 const youtubeClient = new YouTubeReadOnlyClient();
 const auth = createAuth();
+const draftInflight = new Map(); // coalesce duplicate requests for one opportunity
+let draftQueue = Promise.resolve(); // serialize paid calls across opportunities
 const STATIC_ROOT = join(process.cwd(), 'dist');
 const MIME_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
 
@@ -100,7 +103,7 @@ function opportunitiesToCsv(items) {
   return rows.map((row) => row.map(csvEscape).join(',')).join('\n');
 }
 
-const LOGIN_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Best Lead System sign in</title></head><body><main><h1>Best Lead System</h1><form action="/login" method="post"><label>Owner password <input type="password" name="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form></main></body></html>`;
+const LOGIN_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Best Lead System AI sign in</title></head><body><main><h1>Best Lead System AI</h1><form action="/login" method="post"><label>Owner password <input type="password" name="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form></main></body></html>`;
 
 async function handle(request, response) {
   const url = new URL(request.url, 'http://localhost');
@@ -275,19 +278,38 @@ async function handle(request, response) {
 
     const aiDraftMatch = url.pathname.match(/^\/api\/opportunities\/([^/]+)\/ai-drafts$/);
     if (request.method === 'POST' && aiDraftMatch) {
-      let provider = 'server_fallback';
-      const item = await store.mutate(async (data) => {
-        const opportunity = hydrateOpportunity(data, aiDraftMatch[1]);
-        if (!opportunity) throw new Error(`opportunity_not_found:${aiDraftMatch[1]}`);
+      const body = await readJson(request);
+      const id = aiDraftMatch[1];
+      if (draftInflight.has(id)) {
+        await draftInflight.get(id);
+        const saved = await store.load();
+        sendJson(response, 200, { item: hydrateOpportunity(saved, id), provider: 'cached' });
+        return;
+      }
+      const work = draftQueue.then(() => store.mutate(async (data) => {
+        const opportunity = hydrateOpportunity(data, id);
+        if (!opportunity) throw new Error(`opportunity_not_found:${id}`);
+        if (opportunity.opportunityType === 'low_fit_comment' || ['replied', 'rejected'].includes(opportunity.status)) {
+          const error = new Error('Reply ideas are only for open leads.');
+          error.status = 400;
+          throw error;
+        }
+        const cached = opportunity.replyDrafts.filter((draft) => isRealAIDraft(draft, id));
+        if (canPrepareReply(cached, id) && !body.force) return { item: opportunity, provider: 'cached' };
         const generated = await generateReplyDrafts(opportunity);
-        provider = generated.provider;
         for (const draft of generated.drafts) data.replyDrafts[draft.id] = draft;
-        const existing = data.opportunities[aiDraftMatch[1]];
-        existing.selectedDraftId = generated.drafts[0]?.id || existing.selectedDraftId;
-        existing.updatedAt = new Date().toISOString();
-        return hydrateOpportunity(data, aiDraftMatch[1]);
-      });
-      sendJson(response, 200, { item, provider });
+        const answer = generated.drafts.find((draft) => draft.style === 'ai_short_helpful')
+          || generated.drafts.find((draft) => draft.style === 'ai_consultative') || generated.drafts[0];
+        data.opportunities[id].selectedDraftId = answer.id;
+        data.opportunities[id].updatedAt = new Date().toISOString();
+        return { item: hydrateOpportunity(data, id), provider: generated.provider };
+      }));
+      draftQueue = work.catch(() => {});
+      draftInflight.set(id, work);
+      try {
+        const result = await work;
+        sendJson(response, 200, result);
+      } finally { draftInflight.delete(id); }
       return;
     }
 

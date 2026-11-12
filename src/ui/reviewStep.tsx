@@ -59,7 +59,7 @@ export function LeadCard({ item, status, selected, onSelect }: { item: ScoredFix
   const details = situationDetails(item);
   const days = new Date(item.comment.publishedAt).getTime();
   const ageInDays = Number.isFinite(days) ? Math.max(0, Math.floor((Date.now() - days) / 86400000)) : null;
-  const ageHint = ageInDays === null ? 'Age unknown' : ageInDays < 14 ? 'Reply soon' : 'Older';
+  const ageHint = ageInDays === null ? '' : ageInDays < 14 ? 'Reply soon' : ageInDays <= 30 ? 'Check if still active' : 'Old: use for ideas';
   const shortReason = item.score.summary.length > 110 ? `${item.score.summary.slice(0, 107).trimEnd()}…` : item.score.summary;
   return (
     <li className="lead-list-item">
@@ -69,7 +69,7 @@ export function LeadCard({ item, status, selected, onSelect }: { item: ScoredFix
           <span className="card-who">
             <strong>Comment by {item.comment.authorDisplayName}</strong>
             <span>On: {item.video.title}</span>
-            <span>{ageLabel(item)} · {ageHint}</span>
+            <span>{ageLabel(item)}{ageHint ? ` · ${ageHint}` : ''}</span>
           </span>
           <span className="card-badges">
             {!noise && <span className={`priority ${item.score.priority}`}>Lead strength: {leadStrengthLabel(item.score.priority)}</span>}
@@ -87,6 +87,7 @@ export function LeadCard({ item, status, selected, onSelect }: { item: ScoredFix
         <span className="card-tags">
           <span className={`status-badge ${status}`}>{statusLabels[status]}</span>
           <span>{typeLabels[item.score.opportunityType]}</span>
+          <span className="card-action">{selected ? '✓ Selected' : 'Click to reply'}</span>
         </span>
       </button>
     </li>

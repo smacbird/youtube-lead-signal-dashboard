@@ -7,15 +7,12 @@ const opportunity = {
   scoreDimensions: [{ dimension: 'nicheSituation', evidence: ['no experience'] }],
 };
 const prompt = buildDraftPrompt(opportunity);
-for (const phrase of ['Platform: YouTube', 'YouTube video title: Home business for beginners', 'Commenter situation: no experience', 'Comment text: Could you make', 'ONLY when the comment is about affiliate links or affiliate earnings', 'Never mention other platforms', '2-4 natural sentences', 'asks the creator to make a video']) assert.ok(prompt.includes(phrase), phrase);
+for (const phrase of ['Platform: YouTube', 'YouTube video title: Home business for beginners', 'Commenter situation: no experience', 'Comment text: Could you make', 'ONLY when the comment is about affiliate links or affiliate earnings', 'Never mention other platforms', '2-4 sentences', 'asks the creator to make a video', 'Black Friday plans', 'No filler closers', 'qualified professional', 'Never give personalised regulated advice']) assert.ok(prompt.includes(phrase), phrase);
 assert.ok(!prompt.includes('Mention affiliate disclosures when relevant'));
-// Force local fallback, never network. Existing environment has no key in this test by design.
+// Missing key must never create a copyable fallback. No network call occurs.
 const previous = process.env.OPENAI_API_KEY;
 delete process.env.OPENAI_API_KEY;
 try {
-  const { drafts } = await generateReplyDrafts(opportunity);
-  assert.equal(drafts.length, 1);
-  assert.ok(drafts[0].body.includes('follow-up'));
-  assert.ok(!/TikTok|affiliate disclosure/.test(drafts[0].body));
+  await assert.rejects(() => generateReplyDrafts(opportunity), /Reply ideas need the OpenAI key/);
 } finally { if (previous) process.env.OPENAI_API_KEY = previous; }
-console.log('Draft prompt and offline fallback checks passed.');
+console.log('Draft prompt and missing-key safety checks passed.');

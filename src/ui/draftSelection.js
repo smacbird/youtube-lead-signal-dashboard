@@ -4,5 +4,8 @@ export function pickSelectedItem(items, selectedId) {
 }
 export function pickDraftForLead(drafts, selectedDraftId, opportunityId) {
   const owned = drafts.filter((draft) => !draft.opportunityId || draft.opportunityId === opportunityId);
-  return owned.find((draft) => draft.id === selectedDraftId) || owned[0];
+  return owned.find((draft) => draft.id === selectedDraftId)
+    || owned.find((draft) => draft.style === 'ai_short_helpful')
+    || owned.find((draft) => draft.style === 'ai_consultative')
+    || owned[0];
 }

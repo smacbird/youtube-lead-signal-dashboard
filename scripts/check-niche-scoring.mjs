@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { scoreNicheLead, LOW_FIT_REASONS } from '../server/scoring/nicheLead.js';
+import { leadBucket } from '../src/scoring/leadBuckets.js';
 import { NICHE_PROFILES } from '../server/youtube/nicheProfiles.js';
 import { candidateTarget, rankCandidateVideos, selectNicheVideos } from '../server/youtube/videoRanking.js';
 import { importYouTubeVideos } from '../server/import/importService.js';
@@ -132,6 +133,31 @@ const praiseQuestion = check('side_hustles', 'Great video! How much does it cost
 assert.match(praiseQuestion.summary, /cost/i, 'praise plus a real question still counts as a lead');
 const vague = check('ai_tools', 'Nice', { type: LOW, reason: 'praise_only' });
 assert.ok(vague.overallScore < 20);
+
+// Middle band: real but incomplete interest belongs in Maybe, not Best or noise.
+for (const text of ["I'm new", 'New and get into it', 'New to this', 'Just getting into affiliate marketing', 'Complete beginner', 'Zero experience', 'Before Black Friday I want to start']) {
+  const result = check('affiliate_marketing', text, { type: LEAD, summary: /start|beginner|situation/i });
+  assert.equal(result.leadFit, 'maybe', `${text} has weak intent without a specific question`);
+  assert.equal(leadBucket(result), 'maybe');
+}
+const moderate = check('work_from_home', 'How long does it take?', { type: LEAD, summary: /cost or time/i });
+assert.equal(moderate.leadFit, 'maybe');
+assert.equal(leadBucket(moderate), 'maybe');
+const strong = check('work_from_home', "I'm a stay at home mom with no experience. How do I start a home business?", { type: LEAD });
+assert.equal(strong.leadFit, 'best');
+assert.equal(leadBucket(strong), 'best');
+for (const text of ['Can you make a video on how to start a home business?', 'Please make a video about this', 'Do a video about getting started']) {
+  const request = check('work_from_home', text, { type: LEAD, summary: /Asks the creator for a video/ });
+  assert.equal(request.leadFit, 'maybe');
+  assert.ok(request.overallScore <= 54);
+  assert.equal(request.recommendedAction, 'save_content_idea');
+}
+const fba = check('affiliate_marketing', "I'm new to Amazon FBA inventory. How much stock do I need?", { type: LEAD, summary: /different business \(FBA\)/i });
+assert.equal(fba.leadFit, 'maybe');
+assert.ok(fba.overallScore <= 54);
+for (const text of ['Thnx for help', 'lol my cat does this', 'Check out my channel for a secret system']) {
+  assert.equal(scoreNicheLead({ text, profileId: 'work_from_home' }).opportunityType, LOW, 'noise stays Not a fit');
+}
 
 // Candidate ranking.
 assert.equal(candidateTarget(10), 20);

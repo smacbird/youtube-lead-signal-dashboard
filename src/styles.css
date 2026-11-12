@@ -904,7 +904,8 @@ h2[tabindex="-1"]:focus { outline: none; }
 .big-button.secondary { border: 1px solid var(--line); background: rgba(248, 241, 223, 0.07); color: #f8f1df; font-size: 0.98rem; padding: 11px 16px; }
 .result-card .big-button { background: var(--gold); color: var(--ink); opacity: 1; font-size: 1.1rem; }
 .result-card .approval-hooks { opacity: 1; align-items: center; }
-.stat-card.muted { opacity: 0.55; }
+.stat-card.muted { opacity: 1; background: rgba(248, 241, 223, 0.045); border-color: var(--line); }
+.stat-card.muted strong { color: var(--muted); }
 .review-tab.empty { opacity: 0.55; }
 .review-tab.empty.active { opacity: 0.8; }
 .review-list-wrap { min-width: 0; }
@@ -914,7 +915,7 @@ h2[tabindex="-1"]:focus { outline: none; }
 .review-list-wrap .card-topline { grid-template-columns: 54px minmax(0, 1fr); }
 .review-list-wrap .score-ring { display: grid; place-items: center; align-self: center; text-align: center; line-height: 1; padding: 0; font-variant-numeric: tabular-nums; overflow: visible; }
 .review-list-wrap .card-who { min-width: 0; overflow-wrap: anywhere; }
-.card-badges { align-items: flex-start; flex-direction: column; gap: 7px; }
+.card-badges { align-items: flex-start; flex-direction: row; flex-wrap: wrap; gap: 7px; }
 .card-badges .risk.low { background: var(--blue); color: var(--ink) !important; }
 .card-badges .risk.medium { background: var(--gold); }
 .card-badges .risk.high { background: var(--red); }
@@ -935,3 +936,21 @@ h2[tabindex="-1"]:focus { outline: none; }
 .step-heading .age-filter { margin-top: 14px; width: 100%; max-width: none; }
 .step-heading .age-filter select { max-width: 260px; }
 .result-card { border: 0; border-radius: 18px; background: rgba(139, 225, 180, 0.045); }
+.result-card .summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.review-list-wrap .opportunity-list { padding-bottom: 68px; scroll-padding-bottom: 60px; }
+.lead-list-item:last-child { scroll-margin-bottom: 60px; }
+.review-list-wrap .opportunity-card { cursor: pointer; transition: border-color 160ms, box-shadow 160ms, transform 160ms; }
+.review-list-wrap .opportunity-card:hover { transform: translateY(-2px); border-color: var(--mint); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
+.review-list-wrap .opportunity-card.selected { border: 2px solid var(--gold); box-shadow: 0 0 0 2px rgba(246, 200, 95, 0.28); }
+.card-action { color: var(--gold) !important; font-weight: 700; margin-left: auto; }
+.card-quote, .reply-panel blockquote { font-family: inherit; font-size: 0.95rem; }
+.card-badges .priority, .card-badges .risk { display: inline-flex; align-items: center; width: fit-content; max-width: 100%; }
+.reply-step { scroll-margin-top: 24px; }
+@media (max-width: 900px) { .result-card .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .result-card .summary-grid { grid-template-columns: 1fr; } }
+
+/* Header: always visible, larger title, always-available reset */
+.app-header { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(6px); }
+.brand strong { font-size: 1.7rem; letter-spacing: 0.01em; line-height: 1.15; }
+.header-reset { border-color: var(--gold, #d4a84b); color: var(--gold, #d4a84b); font-weight: 700; }
+@media (max-width: 560px) { .brand strong { font-size: 1.4rem; } }
