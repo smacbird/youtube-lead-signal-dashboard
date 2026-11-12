@@ -1,1445 +1,292 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import sampleData from '../data/sample-comments.json';
 import { scoreSampleItems } from './scoring/scoring.js';
+import { apiJson, setCsrfToken } from './ui/api';
+import { buildScanSummary, exportOpportunitiesCsv, isWithinAge, matchesTab, nicheLabel, normaliseImportedOpportunity, statusLabels, typeLabels } from './ui/helpers';
+import { AppHeader, StepProgress, StepSection, type StepState } from './ui/layout';
+import { NichePicker } from './ui/nicheStep';
+import { ReplyPanel } from './ui/replyStep';
+import { AgeFilter, EmptyList, LeadCard, ReviewTabs } from './ui/reviewStep';
+import { ScanPanel, ScanResultCard, type ScanResult } from './ui/scanStep';
+import { SettingsPanel } from './ui/settings';
+import type { AppSettings, FixtureItem, FreshnessWindow, HealthConfig, LocalStatus, NicheProfile, OpportunityType, ReviewTab, ScanSummary, ScoreBand, ScoredFixture, Status } from './ui/types';
 import './styles.css';
 
-type LocalStatus = 'new' | 'reviewed' | 'approved' | 'rejected' | 'replied';
-type Status = 'all' | LocalStatus;
-type ScoreBand = 'all' | 'urgent' | 'high' | 'medium' | 'low';
-type DraftStyle = 'helpful_consultative' | 'concise_resource' | 'content_follow_up' | 'risk_aware_decline';
-type OpportunityType = 'all' | 'niche_lead' | 'affiliate_publisher_opportunity' | 'consumer_buyer_question' | 'low_fit_comment';
-type WorkTab = 'hot' | 'buyer' | 'publisher' | 'content' | 'low_fit' | 'stale' | 'done';
-type NicheProfile = 'affiliate_marketing' | 'money_making' | 'work_from_home' | 'side_hustles' | 'biz_opp' | 'ai_tools' | 'traffic_leads' | 'organic_traffic' | 'custom';
-type FreshnessWindow = '7' | '14' | '30' | 'all';
-type WorkflowStep = 'start' | 'import' | 'review' | 'draft';
-type HealthConfig = { ok?: boolean; youtubeApiKeyConfigured?: boolean; aiDraftsConfigured?: boolean; aiDraftProvider?: string };
-type ImportSummary = { status: string; commentsFetched: number; commentsInserted: number; estimatedQuotaUnits: number; totalPersisted: number; freshCount: number; staleCount: number; hotCount: number; nicheLeadCount: number; publisherCount: number; buyerCount: number; lowFitCount: number; videosFound?: number; bestLeadsFound?: number };
-type AppSettings = { defaultScanDepth: number; defaultFreshnessDays: number; replyTone: string; enabledNiches: NicheProfile[] };
-type ImportPanelResult = { items: ScoredFixture[]; message: string; summary?: ImportSummary };
-type PreviousScan = { id: string; title?: string; status: string; commentsFetched: number; commentsInserted: number; estimatedQuotaUnits: number; startedAt: string; completedAt?: string; metadata?: Record<string, any> };
+const ALL_NICHES: NicheProfile[] = ['affiliate_marketing', 'money_making', 'work_from_home', 'side_hustles', 'biz_opp', 'ai_tools', 'traffic_leads', 'organic_traffic'];
+const CORE_TABS: ReviewTab[] = ['best', 'maybe', 'not_fit', 'done'];
 
-type ScoreDimension = {
-  dimension: string;
-  score: number;
-  reason: string;
-  evidence: string[];
-};
-
-type ReplyDraft = {
-  id: string;
-  style: DraftStyle | string;
-  body: string;
-  complianceNotes: string[];
-};
-
-type FixtureItem = {
-  id: string;
-  video: {
-    id: string;
-    youtubeVideoId?: string;
-    title: string;
-    channelName: string;
-    publishedAt: string;
-    topic: string;
-    offerFit: string[];
-    url?: string;
-  };
-  comment: {
-    id: string;
-    youtubeCommentId?: string;
-    authorDisplayName: string;
-    textOriginal: string;
-    publishedAt: string;
-    likeCount: number;
-    replyCount: number;
-    signals: string[];
-    language: string;
-  };
-  opportunity: {
-    id: string;
-    status: LocalStatus;
-    replyDrafts: ReplyDraft[];
-  };
-};
-
-type ScoredFixture = FixtureItem & {
-  score: {
-    overallScore: number;
-    priority: Exclude<ScoreBand, 'all'>;
-    riskLevel: 'low' | 'medium' | 'high';
-    summary: string;
-    opportunityType: Exclude<OpportunityType, 'all'>;
-    opportunityTypeLabel: string;
-    recommendedAction: string;
-    detectedOfferFit: string[];
-    evidenceSnippets: string[];
-    scoreDimensions: ScoreDimension[];
-    lowFitReason?: string | null;
-    nicheProfileLabel?: string | null;
-  };
-};
-
-const statusLabels: Record<Status, string> = {
-  all: 'All statuses',
-  new: 'New',
-  reviewed: 'Reviewed',
-  approved: 'Approved',
-  rejected: 'Rejected',
-  replied: 'Replied (manual/mock)',
-};
-
-const statusHelp: Record<LocalStatus, string> = {
-  new: 'Not yet reviewed. Mark as reviewed, approve, or reject locally.',
-  reviewed: 'Seen by Steve. Approve a draft or reject it before any manual action.',
-  approved: 'Approved locally. This still does not post: Steve can mark replied only after manual/mock handling.',
-  rejected: 'Do not act on this opportunity unless it is re-reviewed later.',
-  replied: 'Manual/mock state only. No YouTube API call or external message was sent.',
-};
-
-const opportunityTypeLabels: Record<OpportunityType, string> = {
-  all: 'All opportunity types',
-  niche_lead: 'Niche lead',
-  affiliate_publisher_opportunity: 'Affiliate publisher',
-  consumer_buyer_question: 'Consumer buyer question',
-  low_fit_comment: 'Low fit',
-};
-
-const workTabLabels: Record<WorkTab, string> = {
-  hot: 'Hot leads',
-  buyer: 'Buyer questions',
-  publisher: 'Publisher problems',
-  content: 'Content ideas',
-  low_fit: 'Low fit',
-  stale: 'Stale',
-  done: 'Done',
-};
-
-const nicheProfileLabels: Record<NicheProfile, string> = {
-  affiliate_marketing: 'Affiliate marketing',
-  money_making: 'Money-making opportunities',
-  work_from_home: 'Work at/from home business',
-  side_hustles: 'Side hustles',
-  biz_opp: 'Business opportunity / biz opp',
-  ai_tools: 'AI tools/software',
-  traffic_leads: 'Getting Traffic/leads',
-  organic_traffic: 'Organic Traffic',
-  custom: 'Custom / later',
-};
-
-const dimensionLabels: Record<string, string> = {
-  affiliatePublisherSignal: 'Affiliate publisher signal',
-  publisherRevenuePain: 'Publisher revenue pain',
-  publisherActionIntent: 'Publisher action intent',
-  consumerRecommendationIntent: 'Consumer recommendation intent',
-  consumerComparisonIntent: 'Consumer comparison intent',
-  consumerBudgetConstraint: 'Consumer budget constraint',
-  consumerProductCategory: 'Consumer product category',
-  urgency: 'Urgency',
-  contentOpportunity: 'Content/tool value',
-  replyability: 'Replyability',
-  spamComplianceRisk: 'Risk',
-  nicheStartIntent: 'Wants to start',
-  nicheCostTime: 'Cost / time question',
-  nicheLegitimacy: 'Legit / worth it concern',
-  nicheSituation: 'Describes situation',
-  nicheResourceAsk: 'Asks for recommendation',
-  nicheQuestion: 'Question',
-  nicheKeywordFit: 'Niche keyword fit',
-  noiseSignal: 'Noise signal',
-};
-
-// Niche-scan low-fit items carry lowFitReason; legacy low-fit items do not.
-function isNoise(item: ScoredFixture) {
-  return item.score.opportunityType === 'low_fit_comment' && Boolean(item.score.lowFitReason);
+function buildDemoItems(): ScoredFixture[] {
+  const items = sampleData.items as FixtureItem[];
+  const scores = scoreSampleItems(items as any);
+  return items.map((item, index) => ({ ...item, score: { ...scores[index], lowFitReason: null, nicheProfileLabel: null } } as ScoredFixture))
+    .sort((a, b) => b.score.overallScore - a.score.overallScore);
 }
 
-const replyStyleLabels: Record<string, string> = {
-  helpful_consultative: 'Helpful consultative',
-  concise_resource: 'Concise resource pointer',
-  content_follow_up: 'Content-idea follow-up',
-  risk_aware_decline: 'Risk-aware wording',
-  ai_short_helpful: 'AI short helpful',
-  ai_consultative: 'AI consultative',
-  ai_content_angle: 'AI content angle',
-};
-
-function formatOffer(offer: string) {
-  return offer.replaceAll('_', ' ');
+function scrollToStep(n: number) {
+  const el = document.getElementById(`step-${n}`);
+  el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  window.setTimeout(() => el?.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true }), 300);
 }
-
-function formatTopic(topic: string) {
-  return topic.replaceAll('_', ' ');
-}
-
-function getScoreBand(score: number): ScoreBand {
-  if (score >= 82) return 'urgent';
-  if (score >= 68) return 'high';
-  if (score >= 45) return 'medium';
-  return 'low';
-}
-
-function safeTopic(item: ScoredFixture) {
-  return formatTopic(item.video.topic);
-}
-
-function selectedOffer(item: ScoredFixture) {
-  return item.score.detectedOfferFit[0] ? formatOffer(item.score.detectedOfferFit[0]) : safeTopic(item);
-}
-
-function commentAgeDays(item: ScoredFixture) {
-  const published = new Date(item.comment.publishedAt).getTime();
-  if (!Number.isFinite(published)) return null;
-  return Math.max(0, Math.floor((Date.now() - published) / 86400000));
-}
-
-function ageLabel(item: ScoredFixture) {
-  const days = commentAgeDays(item);
-  if (days === null) return 'age unknown';
-  if (days === 0) return 'today';
-  if (days === 1) return '1 day old';
-  if (days < 30) return `${days} days old`;
-  const months = Math.floor(days / 30);
-  return months === 1 ? '1 month old' : `${months} months old`;
-}
-
-function isFreshForWindow(item: ScoredFixture, windowDays: FreshnessWindow) {
-  if (windowDays === 'all') return true;
-  const days = commentAgeDays(item);
-  if (days === null) return false;
-  return days <= Number(windowDays);
-}
-
-function buildImportSummary(items: ScoredFixture[], run?: any, extras: Partial<ImportSummary> = {}): ImportSummary {
-  return {
-    status: run?.status || 'loaded',
-    commentsFetched: Number(run?.commentsFetched || items.length || 0),
-    commentsInserted: Number(run?.commentsInserted || 0),
-    estimatedQuotaUnits: Number(run?.estimatedQuotaUnits || 0),
-    totalPersisted: items.length,
-    freshCount: items.filter((item) => isFreshForWindow(item, '14')).length,
-    staleCount: items.filter((item) => !isFreshForWindow(item, '14')).length,
-    hotCount: items.filter((item) => isFreshForWindow(item, '14') && item.score.overallScore >= 45 && item.score.opportunityType !== 'low_fit_comment').length,
-    nicheLeadCount: items.filter((item) => item.score.opportunityType === 'niche_lead').length,
-    publisherCount: items.filter((item) => item.score.opportunityType === 'affiliate_publisher_opportunity').length,
-    buyerCount: items.filter((item) => item.score.opportunityType === 'consumer_buyer_question').length,
-    lowFitCount: items.filter((item) => item.score.opportunityType === 'low_fit_comment').length,
-    videosFound: extras.videosFound,
-    bestLeadsFound: extras.bestLeadsFound ?? items.filter((item) => item.score.overallScore >= 40 && item.score.opportunityType !== 'low_fit_comment').length,
-  };
-}
-
-function workflowStepStatus(step: WorkflowStep, importedCount: number, selectedItem?: ScoredFixture) {
-  if (step === 'start') return importedCount ? 'ready' : 'current';
-  if (step === 'import') return importedCount ? 'done' : 'current';
-  if (step === 'review') return importedCount ? 'current' : 'locked';
-  return selectedItem ? 'current' : 'locked';
-}
-
-function whyThisMatters(item: ScoredFixture) {
-  if (item.score.opportunityType === 'niche_lead') {
-    return `This looks like a real prospect${item.score.nicheProfileLabel ? ` in ${item.score.nicheProfileLabel}` : ''}: ${item.score.summary}`;
-  }
-  if (isNoise(item)) {
-    return `Low fit: ${item.score.summary} Kept for browsing in the Low fit tab, not for outreach.`;
-  }
-  if (item.score.opportunityType === 'affiliate_publisher_opportunity') {
-    return 'This looks like a publisher/creator monetization problem: the commenter is asking about affiliate links, websites, commissions, tracking, or how to turn traffic into revenue.';
-  }
-  if (item.score.opportunityType === 'consumer_buyer_question') {
-    return 'This looks like buyer intent: the commenter is trying to choose a product, compare options, or decide what is worth buying.';
-  }
-  return 'This comment is probably lower fit for manual outreach, but it may still be useful as a content or audience research signal.';
-}
-
-function nextBestAction(item: ScoredFixture) {
-  const days = commentAgeDays(item);
-  if (days !== null && days > 14) return 'Save for research; avoid replying unless still active';
-  if (item.score.riskLevel === 'high' || item.score.recommendedAction === 'reject_as_spam') return 'Ignore or use caution';
-  if (item.score.overallScore >= 68 && item.score.opportunityType !== 'low_fit_comment') return 'Review and draft reply';
-  if (item.score.opportunityType === 'niche_lead') return 'Review prospect question';
-  if (item.score.opportunityType === 'consumer_buyer_question') return 'Save as buyer/content idea';
-  if (item.score.opportunityType === 'affiliate_publisher_opportunity') return 'Review publisher problem';
-  return 'Ignore for now';
-}
-
-function copyBundleText(item: ScoredFixture, draftText?: string) {
-  return [
-    `Opportunity: ${item.score.opportunityTypeLabel}`,
-    `Score: ${item.score.overallScore} (${item.score.priority})`,
-    `Next action: ${nextBestAction(item)}`,
-    `Why this matters: ${whyThisMatters(item)}`,
-    `Video: ${item.video.title}`,
-    `Commenter: ${item.comment.authorDisplayName}`,
-    `Comment: ${item.comment.textOriginal}`,
-    `Comment URL: ${makeYouTubeCommentUrl(item)}`,
-    draftText ? `Draft reply: ${draftText}` : '',
-  ].filter(Boolean).join('\n\n');
-}
-
-function csvEscape(value: unknown) {
-  const text = String(value ?? '');
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-function exportOpportunitiesCsv(items: ScoredFixture[]) {
-  const rows = [
-    ['score', 'type', 'priority', 'risk', 'status', 'age', 'reason', 'low_fit_reason', 'niche', 'video', 'commenter', 'comment', 'url'],
-    ...items.map((item) => [
-      item.score.overallScore,
-      item.score.opportunityTypeLabel,
-      item.score.priority,
-      item.score.riskLevel,
-      item.opportunity.status,
-      ageLabel(item),
-      item.score.summary,
-      item.score.lowFitReason || '',
-      item.score.nicheProfileLabel || '',
-      item.video.title,
-      item.comment.authorDisplayName,
-      item.comment.textOriginal,
-      makeYouTubeCommentUrl(item),
-    ]),
-  ];
-  const csv = rows.map((row) => row.map(csvEscape).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `best-lead-system-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-
-function draftForStyle(item: ScoredFixture, style: DraftStyle): ReplyDraft {
-  const topic = safeTopic(item);
-  const offer = selectedOffer(item);
-
-  if (style === 'helpful_consultative') {
-    return {
-      id: `${item.opportunity.id}_generated_consultative`,
-      style,
-      body: `A safe reply would acknowledge ${item.comment.authorDisplayName}'s question, suggest one practical next diagnostic step for ${topic}, and invite them to compare it with their own situation without asking for private details in public.`,
-      complianceNotes: ['Steve approval required', 'No guaranteed outcome', 'No request for private data'],
-    };
-  }
-
-  if (style === 'concise_resource') {
-    return {
-      id: `${item.opportunity.id}_generated_concise`,
-      style,
-      body: `Short version: point them to a checklist or simple framework for ${offer}, then remind them to judge it against their own numbers before changing anything.`,
-      complianceNotes: ['Resource pointer only', 'No sales pressure', 'No external posting in MVP'],
-    };
-  }
-
-  if (style === 'content_follow_up') {
-    return {
-      id: `${item.opportunity.id}_generated_content_follow_up`,
-      style,
-      body: `This could also become a useful follow-up piece: turn the question into a short walkthrough on ${topic}, using the public problem pattern rather than the commenter’s private details.`,
-      complianceNotes: ['Content idea, not a direct pitch', 'Anonymise any viewer context', 'Steve approval required'],
-    };
-  }
-
-  return {
-    id: `${item.opportunity.id}_generated_risk_aware`,
-    style,
-    body: `This needs conservative wording. Acknowledge the concern, avoid guarantees or regulated advice, and keep the reply educational rather than promotional.`,
-    complianceNotes: ['High caution', 'No guarantees', 'Do not ask for sensitive details publicly'],
-  };
-}
-
-function makeDrafts(item: ScoredFixture) {
-  const baseDrafts = item.opportunity.replyDrafts ?? [];
-  const stylesNeeded: DraftStyle[] = ['helpful_consultative', 'concise_resource', 'content_follow_up'];
-  const drafts = [...baseDrafts];
-
-  for (const style of stylesNeeded) {
-    if (!drafts.some((draft) => draft.style === style) && item.score.recommendedAction !== 'reject_as_spam') {
-      drafts.push(draftForStyle(item, style));
-    }
-  }
-
-  if ((item.score.riskLevel !== 'low' || item.score.recommendedAction === 'reject_as_spam') && !drafts.some((draft) => draft.style === 'risk_aware_decline')) {
-    drafts.push(draftForStyle(item, 'risk_aware_decline'));
-  }
-
-  return drafts;
-}
-
-function transitionOptions(status: LocalStatus, riskLevel: ScoredFixture['score']['riskLevel']) {
-  const options: Array<{ to: LocalStatus; label: string; note: string; tone?: 'safe' | 'danger' | 'mock' }> = [];
-
-  if (status === 'new') {
-    options.push({ to: 'reviewed', label: 'Mark reviewed', note: 'Moves this from New to Reviewed.' });
-    options.push({ to: 'approved', label: riskLevel === 'high' ? 'Approve with caution' : 'Approve draft', note: 'Local approval only. Nothing is posted.', tone: 'safe' });
-    options.push({ to: 'rejected', label: 'Reject', note: 'Keep this out of the action queue.', tone: 'danger' });
-  }
-
-  if (status === 'reviewed') {
-    options.push({ to: 'approved', label: riskLevel === 'high' ? 'Approve with caution' : 'Approve draft', note: 'Local approval only. Nothing is posted.', tone: 'safe' });
-    options.push({ to: 'rejected', label: 'Reject', note: 'Keep this out of the action queue.', tone: 'danger' });
-  }
-
-  if (status === 'approved') {
-    options.push({ to: 'replied', label: 'Mark replied manually', note: 'Mock/manual state only. No API call runs.', tone: 'mock' });
-    options.push({ to: 'rejected', label: 'Reject instead', note: 'Cancel the approved local action.', tone: 'danger' });
-  }
-
-  if (status === 'replied') {
-    options.push({ to: 'reviewed', label: 'Reopen as reviewed', note: 'Correct the manual/mock state.' });
-  }
-
-  if (status === 'rejected') {
-    options.push({ to: 'reviewed', label: 'Reopen for review', note: 'Local correction only.' });
-  }
-
-  return options;
-}
-
-function buildItems(): ScoredFixture[] {
-  const items = (sampleData.items as FixtureItem[]);
-  const scores = scoreSampleItems(items);
-
-  return items.map((item, index) => ({
-    ...item,
-    score: scores[index],
-  })).sort((a, b) => b.score.overallScore - a.score.overallScore);
-}
-
-
-function makeYouTubeVideoUrl(item: ScoredFixture) {
-  const videoId = item.video.youtubeVideoId;
-  if (videoId && !videoId.includes('FIX')) {
-    return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
-  }
-  return item.video.url ?? '#';
-}
-
-function makeYouTubeCommentUrl(item: ScoredFixture) {
-  const videoId = item.video.youtubeVideoId;
-  const commentId = item.comment.youtubeCommentId;
-  if (videoId && commentId && !videoId.includes('FIX') && !commentId.includes('FIX')) {
-    return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&lc=${encodeURIComponent(commentId)}`;
-  }
-  return makeYouTubeVideoUrl(item);
-}
-
-function isRealYouTubeUrl(url: string) {
-  return url.startsWith('https://www.youtube.com/') || url.startsWith('https://youtube.com/');
-}
-
-function SourceActions({ item, draftText, onMarkReplied }: { item: ScoredFixture; draftText?: string; onMarkReplied: () => void }) {
-  const [copied, setCopied] = useState(false);
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
-  const videoUrl = makeYouTubeVideoUrl(item);
-  const commentUrl = makeYouTubeCommentUrl(item);
-  const realLinks = isRealYouTubeUrl(commentUrl);
-
-  async function copyDraft() {
-    if (!draftText) return;
-    await navigator.clipboard.writeText(draftText);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
-  }
-
-  async function copyBundle() {
-    await navigator.clipboard.writeText(copyBundleText(item, draftText));
-    setCopiedUrl('review bundle');
-    window.setTimeout(() => setCopiedUrl(null), 1800);
-  }
-
-  async function copyUrl(label: string, url: string) {
-    await navigator.clipboard.writeText(url);
-    setCopiedUrl(label);
-    window.setTimeout(() => setCopiedUrl(null), 1800);
-  }
-
-  function openOutsidePreview(url: string) {
-    const opened = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!opened) copyUrl('URL', url);
-  }
-
-  return (
-    <section className="detail-section source-actions" aria-label="Manual posting actions">
-      <div className="section-heading-row">
-        <h3>Manual reply actions</h3>
-        <span>{realLinks ? 'Live links when real data is imported' : 'Fixture links in MVP'}</span>
-      </div>
-      <p>
-        YouTube blocks embedded previews. Use the copy buttons, or open this dashboard in standalone mode and then open YouTube in a normal browser tab.
-      </p>
-      <div className="action-grid">
-        <button className={realLinks ? 'source-button' : 'source-button disabled'} type="button" disabled={!realLinks} onClick={() => openOutsidePreview(videoUrl)}>
-          Open video outside preview
-        </button>
-        <button className={realLinks ? 'source-button primary' : 'source-button disabled'} type="button" disabled={!realLinks} onClick={() => openOutsidePreview(commentUrl)}>
-          Open exact comment outside preview
-        </button>
-        <button className="source-button" type="button" disabled={!realLinks} onClick={() => copyUrl('Video URL', videoUrl)}>
-          Copy video URL
-        </button>
-        <button className="source-button" type="button" disabled={!realLinks} onClick={() => copyUrl('Comment URL', commentUrl)}>
-          Copy comment URL
-        </button>
-        <button className="source-button" type="button" onClick={copyDraft} disabled={!draftText}>
-          {copied ? 'Copied draft' : 'Copy draft reply'}
-        </button>
-        <button className="source-button" type="button" onClick={copyBundle}>
-          Copy review bundle
-        </button>
-        <button className="source-button mock" type="button" onClick={onMarkReplied}>
-          Mark replied manually
-        </button>
-      </div>
-      <dl className="source-meta">
-        <div><dt>Video ID</dt><dd>{item.video.youtubeVideoId ?? 'not available'}</dd></div>
-        <div><dt>Comment ID</dt><dd>{item.comment.youtubeCommentId ?? 'not available'}</dd></div>
-        <div><dt>Video URL</dt><dd>{videoUrl}</dd></div>
-        <div><dt>Comment URL</dt><dd>{commentUrl}</dd></div>
-      </dl>
-      {copiedUrl && <small className="workflow-note">Copied {copiedUrl}. Paste it into a normal browser tab if YouTube blocks the preview iframe.</small>}
-      {!realLinks && <small className="workflow-note">The sample dataset uses fake YouTube IDs, so outbound links are intentionally disabled until real imports exist.</small>}
-    </section>
-  );
-}
-
-function StatCard({ label, value, note }: { label: string; value: string | number; note: string }) {
-  return (
-    <div className="stat-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{note}</small>
-    </div>
-  );
-}
-
-function FilterButton<T extends string>({ active, value, label, onClick }: { active: boolean; value: T; label: string; onClick: (value: T) => void }) {
-  return (
-    <button className={active ? 'chip active' : 'chip'} onClick={() => onClick(value)} type="button">
-      {label}
-    </button>
-  );
-}
-
-function StatusBadge({ status }: { status: LocalStatus }) {
-  return <span className={`status-badge ${status}`}>{statusLabels[status]}</span>;
-}
-
-function OpportunityCard({ item, localStatus, selected, onSelect }: { item: ScoredFixture; localStatus: LocalStatus; selected: boolean; onSelect: () => void }) {
-  const topDimensions = [...item.score.scoreDimensions]
-    .filter((dimension) => dimension.dimension !== 'spamComplianceRisk')
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
-
-  return (
-    <button className={selected ? 'opportunity-card selected' : 'opportunity-card'} onClick={onSelect} type="button">
-      <div className="card-topline">
-        <span className={`score-ring ${item.score.priority}`}>{item.score.overallScore}</span>
-        <div>
-          <strong>{item.comment.authorDisplayName}</strong>
-          <span>{item.video.channelName} · {formatTopic(item.video.topic)}</span>
-        </div>
-        <span className={`risk ${item.score.riskLevel}`}>{item.score.riskLevel} risk</span>
-      </div>
-      <p className={isNoise(item) ? 'low-fit-reason' : undefined}>{isNoise(item) ? `Low fit: ${item.score.summary}` : item.score.summary}</p>
-      <blockquote>{item.comment.textOriginal}</blockquote>
-      <div className="mini-bars" aria-label="Top score dimensions">
-        {topDimensions.map((dimension) => (
-          <span key={dimension.dimension} title={`${dimensionLabels[dimension.dimension]} ${dimension.score}`}>
-            <i style={{ width: `${dimension.score}%` }} />
-          </span>
-        ))}
-      </div>
-      <div className="card-tags">
-        <StatusBadge status={localStatus} />
-        <span>{ageLabel(item)}</span>
-        <span>{opportunityTypeLabels[item.score.opportunityType]}</span>
-        <span>{item.score.recommendedAction.replaceAll('_', ' ')}</span>
-      </div>
-    </button>
-  );
-}
-
-function ScoreBreakdown({ dimensions }: { dimensions: ScoreDimension[] }) {
-  return (
-    <div className="score-grid">
-      {dimensions.map((dimension) => (
-        <div className={dimension.dimension === 'spamComplianceRisk' ? 'dimension risk-dimension' : 'dimension'} key={dimension.dimension}>
-          <div>
-            <strong>{dimensionLabels[dimension.dimension] ?? dimension.dimension}</strong>
-            <span>{dimension.score}/100</span>
-          </div>
-          <meter min="0" max="100" value={dimension.score} aria-label={`${dimensionLabels[dimension.dimension]} score`} />
-          <p>{dimension.reason}</p>
-          {dimension.evidence.length > 0 && (
-            <small>Evidence: {dimension.evidence.join(' · ')}</small>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function WorkflowPanel({ item, localStatus, onTransition }: { item: ScoredFixture; localStatus: LocalStatus; onTransition: (to: LocalStatus) => void }) {
-  const options = transitionOptions(localStatus, item.score.riskLevel);
-
-  return (
-    <section className="detail-section workflow-panel" aria-label="Comment Status">
-      <div className="section-heading-row">
-        <h3>Comment Status</h3>
-        <StatusBadge status={localStatus} />
-      </div>
-      <p>{statusHelp[localStatus]}</p>
-      <div className="transition-map" aria-label="Allowed state transitions">
-        {(['new', 'reviewed', 'approved', 'rejected', 'replied'] as LocalStatus[]).map((step, index) => (
-          <React.Fragment key={step}>
-            <span className={step === localStatus ? `flow-step active ${step}` : `flow-step ${step}`}>{statusLabels[step]}</span>
-            {index < 4 && <span className="flow-arrow" aria-hidden="true">→</span>}
-          </React.Fragment>
-        ))}
-      </div>
-      <div className="approval-hooks">
-        {options.map((option) => (
-          <button className={option.tone ? `workflow-button ${option.tone}` : 'workflow-button'} key={option.to} onClick={() => onTransition(option.to)} title={option.note} type="button">
-            {option.label}
-          </button>
-        ))}
-      </div>
-      <small className="workflow-note">All transitions are in-memory for this demo. Refreshing resets back to the sample fixture statuses.</small>
-    </section>
-  );
-}
-
-function DetailPanel({
-  item,
-  localStatus,
-  selectedDraftId,
-  onSelectDraft,
-  onTransition,
-  onGenerateDrafts,
-}: {
-  item: ScoredFixture;
-  localStatus: LocalStatus;
-  selectedDraftId?: string;
-  onSelectDraft: (draftId: string) => void;
-  onTransition: (to: LocalStatus) => void;
-  onGenerateDrafts: () => Promise<void>;
-}) {
-  const [generatingDrafts, setGeneratingDrafts] = useState(false);
-  const [draftMessage, setDraftMessage] = useState('');
-  const drafts = makeDrafts(item);
-  const selectedDraft = drafts.find((draft) => draft.id === selectedDraftId) ?? drafts[0];
-
-  return (
-    <aside className="detail-panel" aria-label="Opportunity detail">
-      <div className="detail-header">
-        <div>
-          <span className="eyebrow">Selected lead</span>
-          <h2>{item.comment.authorDisplayName}</h2>
-        </div>
-        <span className={`priority ${item.score.priority}`}>{item.score.priority}</span>
-      </div>
-
-      <section className="detail-section source-context">
-        <h3>Source context</h3>
-        <p><strong>{item.video.title}</strong></p>
-        <p>{item.video.channelName} · {new Date(item.comment.publishedAt).toLocaleDateString()} · {ageLabel(item)} · {item.comment.likeCount} likes · {item.comment.replyCount} replies</p>
-        <blockquote>{item.comment.textOriginal}</blockquote>
-      </section>
-
-      <section className="detail-section insight-box">
-        <div className="section-heading-row">
-          <h3>Why this matters</h3>
-          <span>{nextBestAction(item)}</span>
-        </div>
-        <p>{whyThisMatters(item)}</p>
-      </section>
-
-      <SourceActions item={item} draftText={selectedDraft?.body} onMarkReplied={() => onTransition('replied')} />
-
-      <section className="detail-section">
-        <div className="section-heading-row">
-          <h3>Comment Reply Options</h3>
-          <button className="workflow-button safe" type="button" disabled={generatingDrafts} onClick={async () => {
-            setGeneratingDrafts(true);
-            setDraftMessage('Generating safe drafts…');
-            try {
-              await onGenerateDrafts();
-              setDraftMessage('Drafts generated. Review before copying or posting manually.');
-            } catch (error) {
-              setDraftMessage(`Draft generation failed safely: ${error instanceof Error ? error.message : 'unknown error'}`);
-            } finally {
-              setGeneratingDrafts(false);
-            }
-          }}>{generatingDrafts ? 'Generating…' : 'Generate safe draft ideas'}</button>
-        </div>
-        <small className="workflow-note">{draftMessage || 'Draft selection only: no posting. Draft mode appears in the main workflow header.'}</small>
-        {drafts.length ? (
-          <>
-            <div className="draft-tabs" role="tablist" aria-label="Comment Reply Options">
-              {drafts.map((draft) => (
-                <button
-                  aria-selected={selectedDraft?.id === draft.id}
-                  className={selectedDraft?.id === draft.id ? 'draft-tab active' : 'draft-tab'}
-                  key={draft.id}
-                  onClick={() => onSelectDraft(draft.id)}
-                  role="tab"
-                  type="button"
-                >
-                  {replyStyleLabels[draft.style] ?? draft.style}
-                </button>
-              ))}
-            </div>
-            {selectedDraft && (
-              <article className={item.score.riskLevel === 'high' ? 'draft selected-draft high-risk' : 'draft selected-draft'}>
-                <strong>{replyStyleLabels[selectedDraft.style] ?? selectedDraft.style}</strong>
-                <p>{selectedDraft.body}</p>
-                <small>{selectedDraft.complianceNotes.join(' · ')}</small>
-              </article>
-            )}
-          </>
-        ) : <p className="empty-state">No draft shown because this should be rejected or ignored.</p>}
-      </section>
-
-      <WorkflowPanel item={item} localStatus={localStatus} onTransition={onTransition} />
-
-      <section className="detail-section">
-        <h3>{item.score.opportunityType === 'low_fit_comment' ? 'Why this is low fit' : 'Why this scored well'}</h3>
-        <p>{item.score.summary}</p>
-        <div className="evidence-list">
-          {item.score.evidenceSnippets.length ? item.score.evidenceSnippets.map((snippet) => <span key={snippet}>“{snippet}”</span>) : <span>No strong evidence snippet found.</span>}
-        </div>
-        <div className="offer-row">
-          {item.score.detectedOfferFit.length ? item.score.detectedOfferFit.map((offer) => <span key={offer}>{formatOffer(offer)}</span>) : <span>No safe offer fit</span>}
-        </div>
-      </section>
-
-      <section className="detail-section">
-        <h3>Score breakdown</h3>
-        <ScoreBreakdown dimensions={item.score.scoreDimensions} />
-      </section>
-
-      <section className="detail-section risk-box">
-        <h3>Risk flags</h3>
-        <p><strong>{item.score.riskLevel.toUpperCase()}</strong> risk · recommended action: {item.score.recommendedAction.replaceAll('_', ' ')}</p>
-        <ul>
-          {item.score.scoreDimensions.find((dimension) => dimension.dimension === 'spamComplianceRisk')?.evidence.map((risk) => <li key={risk}>{risk}</li>) ?? null}
-          {item.comment.signals.filter((signal) => signal.includes('risk') || signal.includes('caution') || signal === 'spam' || signal === 'hostile').map((signal) => <li key={signal}>{signal.replaceAll('_', ' ')}</li>)}
-          {item.score.riskLevel === 'low' && <li>No major spam or compliance flag in sample scoring.</li>}
-        </ul>
-      </section>
-
-
-    </aside>
-  );
-}
-
-
-function normaliseImportedOpportunity(raw: any): ScoredFixture {
-  const video = raw.video || {};
-  const comment = raw.comment || {};
-  const replyDrafts = raw.replyDrafts || [];
-  return {
-    id: raw.id,
-    video: {
-      id: video.id || raw.videoId || 'imported_video',
-      youtubeVideoId: video.youtubeVideoId || video.id,
-      title: video.title || 'Imported YouTube video',
-      channelName: video.channelName || video.channelTitle || 'YouTube channel',
-      publishedAt: video.publishedAt || raw.createdAt || new Date().toISOString(),
-      topic: video.topic || 'youtube_import',
-      offerFit: video.offerFit || raw.detectedOfferFit || [],
-      url: video.url,
-    },
-    comment: {
-      id: comment.id || raw.commentId,
-      youtubeCommentId: comment.youtubeCommentId || comment.id,
-      authorDisplayName: comment.authorDisplayName || comment.authorName || 'YouTube commenter',
-      textOriginal: comment.textOriginal || comment.text || '',
-      publishedAt: comment.publishedAt || raw.createdAt || new Date().toISOString(),
-      likeCount: comment.likeCount || 0,
-      replyCount: comment.replyCount || 0,
-      signals: comment.signals || [],
-      language: comment.language || 'en',
-    },
-    opportunity: {
-      id: raw.id,
-      status: raw.status || 'new',
-      replyDrafts,
-    },
-    score: {
-      overallScore: raw.overallScore || 0,
-      priority: raw.priority || getScoreBand(raw.overallScore || 0),
-      riskLevel: raw.riskLevel || 'low',
-      summary: raw.summary || 'Imported YouTube opportunity.',
-      opportunityType: raw.opportunityType || 'low_fit_comment',
-      opportunityTypeLabel: raw.opportunityTypeLabel || opportunityTypeLabels[raw.opportunityType as OpportunityType] || 'Imported opportunity',
-      recommendedAction: raw.recommendedAction || 'reply',
-      detectedOfferFit: raw.detectedOfferFit || [],
-      evidenceSnippets: raw.evidenceSnippets || [],
-      scoreDimensions: raw.scoreDimensions || [],
-      lowFitReason: raw.lowFitReason || null,
-      nicheProfileLabel: raw.nicheProfileLabel || null,
-    },
-  };
-}
-
-
-function StandaloneModeGate({ children }: { children: React.ReactNode }) {
-  const [isFramed, setIsFramed] = useState(false);
-  const [currentUrl, setCurrentUrl] = useState('');
-
-  useEffect(() => {
-    const framed = window.self !== window.top;
-    setIsFramed(framed);
-    setCurrentUrl(window.location.href);
-  }, []);
-
-  async function copyDashboardUrl() {
-    await navigator.clipboard.writeText(currentUrl);
-  }
-
-  function leaveIframe() {
-    try {
-      window.open(currentUrl, '_blank', 'noopener,noreferrer');
-    } catch (error) {
-      // Fall through to top navigation below.
-    }
-    try {
-      window.top?.location.assign(currentUrl);
-    } catch (error) {
-      window.location.assign(currentUrl);
-    }
-  }
-
-  if (!isFramed) return <>{children}</>;
-
-  return (
-    <main className="standalone-only-shell">
-      <section className="standalone-only-card">
-        <span className="eyebrow">Standalone dashboard required</span>
-        <h1>Open the YouTube dashboard in a normal browser tab</h1>
-        <p>
-          This dashboard no longer runs inside the Easy preview iframe. YouTube blocks iframe loading, so the review workflow now runs only as a standalone browser page.
-        </p>
-        <div className="standalone-actions big">
-          <button className="source-button primary" type="button" onClick={leaveIframe}>Open standalone dashboard</button>
-          <button className="source-button" type="button" onClick={copyDashboardUrl}>Copy dashboard URL</button>
-        </div>
-        <small>After opening the standalone tab, use Previous Scans, select a comment, generate draft ideas, and open YouTube links from there.</small>
-        <code className="standalone-url">{currentUrl}</code>
-      </section>
-    </main>
-  );
-}
-
-
-function apiErrorMessage(body: any, status: number) {
-  const searchMessage = body?.searchErrors?.find((error: any) => error?.message)?.message;
-  const directMessage = body?.error?.message || body?.message;
-  const runMessage = body?.run?.errors?.find((error: any) => error?.message)?.message;
-  const message = searchMessage || directMessage || runMessage || `Request failed: ${status}`;
-  if (/api key not valid/i.test(message)) return 'YouTube API key is not valid. Update YOUTUBE_API_KEY in Render with a valid YouTube Data API v3 key.';
-  if (/quota/i.test(message)) return `YouTube API quota issue: ${message}`;
-  return message;
-}
-
-let csrfToken = '';
-
-async function apiJson(path: string, options?: RequestInit) {
-  const response = await fetch(path, {
-    ...options,
-    headers: { 'content-type': 'application/json', ...(options?.method && options.method !== 'GET' ? { 'x-csrf-token': csrfToken } : {}), ...(options?.headers || {}) },
-  });
-  if (response.status === 401) {
-    window.location.assign('/login');
-    throw new Error('Session expired. Sign in again.');
-  }
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(apiErrorMessage(body, response.status));
-  return body;
-}
-
-
-function WorkflowSteps({ step, importedCount, selectedItem }: { step: WorkflowStep; importedCount: number; selectedItem?: ScoredFixture }) {
-  const steps: Array<{ id: WorkflowStep; title: string; note: string }> = [
-    { id: 'start', title: '1. Choose niche', note: 'Start with affiliate marketing. Other profiles are staged for later.' },
-    { id: 'import', title: '2. Scan videos', note: 'Paste YouTube URLs and import public comments read-only.' },
-    { id: 'review', title: '3. Review best leads', note: 'Work from the action queue first, then research/stale tabs.' },
-    { id: 'draft', title: '4. Draft and copy', note: 'Generate safe ideas, copy, and post manually only.' },
-  ];
-  return (
-    <section className="workflow-steps" aria-label="Guided workflow">
-      {steps.map((item) => (
-        <div key={item.id} className={`workflow-step ${workflowStepStatus(item.id, importedCount, selectedItem)}`}>
-          <strong>{item.title}</strong>
-          <span>{item.note}</span>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function ImportSummaryPanel({ summary, onReview, onShowStale }: { summary?: ImportSummary; onReview: () => void; onShowStale: () => void }) {
-  if (!summary) return null;
-  return (
-    <section className="import-summary-card" aria-label="Import results summary">
-      <div className="section-heading-row">
-        <div>
-          <span className="eyebrow">Import results</span>
-          <h2>{summary.status === 'succeeded' ? 'Scan complete' : 'Saved queue loaded'}</h2>
-        </div>
-        <strong>{summary.totalPersisted} opportunities shown</strong>
-      </div>
-      <div className="summary-grid">
-        <StatCard label="Videos found" value={summary.videosFound ?? '—'} note="scan quality" />
-        <StatCard label="Comments scanned" value={summary.commentsFetched} note="from YouTube" />
-        <StatCard label="Fresh leads" value={summary.freshCount} note="last 14 days" />
-        <StatCard label="Stale research" value={summary.staleCount} note="older than 14 days" />
-        <StatCard label="Best leads found" value={summary.bestLeadsFound ?? summary.hotCount} note="score-qualified" />
-        {summary.nicheLeadCount > 0 && <StatCard label="Niche leads" value={summary.nicheLeadCount} note="prospect questions" />}
-        <StatCard label="Low fit / noise" value={summary.lowFitCount} note="hidden from Best Comments" />
-        <StatCard label="Publisher questions" value={summary.publisherCount} note="affiliate/site owner" />
-        <StatCard label="Buyer questions" value={summary.buyerCount} note="product decisions" />
-      </div>
-      <div className="approval-hooks">
-        <button className="workflow-button safe" type="button" onClick={onReview}>Review best leads</button>
-        <button className="workflow-button" type="button" onClick={onShowStale}>Show stale research leads</button>
-      </div>
-      <small className="workflow-note">Quota used: {summary.estimatedQuotaUnits || 0} units. Older comments are usually better for content ideas than direct replies.</small>
-    </section>
-  );
-}
-
-function SmartEmptyState({ importedCount, dataSource, workTab, freshnessWindow, onShowAll, onShowStale, onImport }: { importedCount: number; dataSource: string; workTab: WorkTab; freshnessWindow: FreshnessWindow; onShowAll: () => void; onShowStale: () => void; onImport: () => void }) {
-  const noImports = dataSource === 'imported' && importedCount === 0;
-  return (
-    <div className="smart-empty-state">
-      <h3>{noImports ? 'No imported comments yet' : 'No leads match this view'}</h3>
-      <p>{noImports ? 'Start by scanning a newer YouTube video, or open Previous Scans if you already imported comments.' : `This view is filtered to ${workTabLabels[workTab].toLowerCase()} with ${freshnessWindow === 'all' ? 'all ages' : `the last ${freshnessWindow} days`}. The batch may have older or lower-score comments.`}</p>
-      <div className="approval-hooks">
-        <button className="workflow-button safe" type="button" onClick={onShowAll}>Show all imported comments</button>
-        <button className="workflow-button" type="button" onClick={onShowStale}>Show stale research leads</button>
-        <button className="workflow-button" type="button" onClick={onImport}>Import a newer video</button>
-      </div>
-    </div>
-  );
-}
-
-function ImportPanel({ nicheProfile, settings, onImported }: { nicheProfile: NicheProfile; settings: AppSettings; onImported: (result: ImportPanelResult) => void }) {
-  const [videoUrls, setVideoUrls] = useState('');
-  const [maxVideos, setMaxVideos] = useState(3);
-  const [maxPages, setMaxPages] = useState(1);
-  const [maxCommentsPerVideo, setMaxCommentsPerVideo] = useState(100);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('Start by scanning a niche, or open Previous Scans from earlier imports.');
-  const [scanDepth, setScanDepth] = useState(settings.defaultScanDepth);
-  const [daysBack, setDaysBack] = useState(settings.defaultFreshnessDays);
-  const [scanMode, setScanMode] = useState<'niche' | 'manual'>('niche');
-  const [previousScans, setPreviousScans] = useState<PreviousScan[]>([]);
-  useEffect(() => { setScanDepth(settings.defaultScanDepth); setDaysBack(settings.defaultFreshnessDays); }, [settings.defaultScanDepth, settings.defaultFreshnessDays]);
-
-  async function loadPreviousScans() {
-    setLoading(true);
-    try {
-      const body = await apiJson('/api/import-runs?limit=10');
-      setPreviousScans(body.items || []);
-      setMessage(`Loaded ${body.items?.length || 0} previous scans. Click Load previous scan results to view the saved queue.`);
-    } catch (error) {
-      setMessage(`Previous scans not reachable yet: ${error instanceof Error ? error.message : 'unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadPreviousScanResults() {
-    setLoading(true);
-    try {
-      const body = await apiJson('/api/opportunities?limit=250');
-      const items = (body.items || []).map(normaliseImportedOpportunity);
-      const summary = buildImportSummary(items);
-      onImported({ items, message: `Loaded ${items.length} previous-scan opportunities.`, summary });
-      setMessage(`Loaded ${items.length} previous-scan opportunities.`);
-    } catch (error) {
-      setMessage(`Backend not reachable yet: ${error instanceof Error ? error.message : 'unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadOnePreviousScan(scanId: string) {
-    setLoading(true);
-    try {
-      const body = await apiJson(`/api/import-runs/${encodeURIComponent(scanId)}?limit=250`);
-      const items = (body.items || []).map(normaliseImportedOpportunity);
-      const summary = buildImportSummary(items, body.run);
-      onImported({ items, message: `Loaded previous scan: ${body.run?.title || scanId}`, summary });
-      setMessage(`Loaded previous scan: ${body.run?.title || scanId}`);
-    } catch (error) {
-      setMessage(`Could not load previous scan: ${error instanceof Error ? error.message : 'unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function deletePreviousScan(scanId: string) {
-    if (!window.confirm('Delete this previous scan and remove its comments, opportunities, drafts, and review history?')) return;
-    setLoading(true);
-    try {
-      await apiJson(`/api/import-runs/${encodeURIComponent(scanId)}`, { method: 'DELETE' });
-      setPreviousScans((current) => current.filter((scan) => scan.id !== scanId));
-      setMessage('Previous scan and its related comments/opportunities were deleted.');
-    } catch (error) {
-      setMessage(`Could not delete previous scan: ${error instanceof Error ? error.message : 'unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function scanByNiche() {
-    setLoading(true);
-    try {
-      const body = await apiJson('/api/scan/youtube-niche', {
-        method: 'POST',
-        body: JSON.stringify({
-          profileId: nicheProfile,
-          maxVideos: scanDepth,
-          daysBack,
-          maxPagesPerVideo: maxPages,
-          replyTone: settings.replyTone,
-          maxCommentsPerRun: maxCommentsPerVideo,
-          maxResultsPerPage: Math.min(100, maxCommentsPerVideo),
-        }),
-      });
-      const items = (body.items || []).map(normaliseImportedOpportunity);
-      const importSummary = buildImportSummary(items, body.run, { videosFound: body.videosFound?.length || 0 });
-      const summary = `Niche scan complete: ${body.videosFound?.length || 0} videos found, ${body.run?.commentsFetched || 0} comments scanned, ${items.length} current-scan opportunities shown.`;
-      onImported({ items, message: summary, summary: importSummary });
-      setMessage(`${summary} Estimated quota: ${body.run?.estimatedQuotaUnits || 0} units. Use Previous Scans if you want to see older scans too.`);
-    } catch (error) {
-      setMessage(`Niche scan could not run: ${error instanceof Error ? error.message : 'unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function importVideos() {
-    setLoading(true);
-    try {
-      const inputs = videoUrls.split(/\n|,/).map((value) => value.trim()).filter(Boolean);
-      const body = await apiJson('/api/import/youtube', {
-        method: 'POST',
-        body: JSON.stringify({ videoUrls: inputs, maxVideos, maxPages, maxCommentsPerVideo }),
-      });
-      const opportunities = await apiJson('/api/opportunities?limit=250');
-      const items = (opportunities.items || []).map(normaliseImportedOpportunity);
-      const importSummary = buildImportSummary(items, body.run);
-      const summary = `Import ${body.run?.status || 'finished'}: ${body.run?.commentsFetched || 0} comments fetched, ${items.length} previous-scan opportunities available.`;
-      onImported({ items, message: summary, summary: importSummary });
-      setMessage(summary);
-    } catch (error) {
-      setMessage(`Import failed safely: ${error instanceof Error ? error.message : 'unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <section className="import-panel" aria-label="Read-only YouTube scanner">
-      <div>
-        <span className="eyebrow">Step 2 · Scan YouTube</span>
-        <h2>Scan by niche</h2>
-        <p>The system searches relevant recent YouTube videos for the selected niche, imports public comments read-only, then scores the best opportunities. It favors videos old enough to have comments, not just brand-new uploads.</p>
-      </div>
-
-      <div className="scan-mode-tabs" role="tablist" aria-label="Scan mode">
-        <button className={scanMode === 'niche' ? 'chip active' : 'chip'} type="button" onClick={() => setScanMode('niche')}>Scan by niche</button>
-        <button className={scanMode === 'manual' ? 'chip active' : 'chip'} type="button" onClick={() => setScanMode('manual')}>Paste specific URLs</button>
-      </div>
-
-      {scanMode === 'niche' ? (
-        <div className="scan-settings-grid">
-          <label><span>Scan depth</span><select value={scanDepth} onChange={(event) => setScanDepth(Number(event.target.value))}>
-            <option value={5}>Quick scan · 5 videos</option>
-            <option value={10}>Standard scan · 10 videos</option>
-            <option value={25}>Deep scan · 25 videos</option>
-          </select></label>
-          <label><span>Video freshness</span><select value={daysBack} onChange={(event) => setDaysBack(Number(event.target.value))}>
-            <option value={7}>Videos from last 7 days</option>
-            <option value={14}>Videos from last 14 days</option>
-            <option value={30}>Videos from last 30 days · recommended</option>
-            <option value={90}>Videos from last 90 days</option>
-          </select></label>
-          <label><span>Comment cap</span><input type="number" min="25" max="500" value={maxCommentsPerVideo} onChange={(event) => setMaxCommentsPerVideo(Number(event.target.value) || 100)} /></label>
-          <label><span>Pages/video</span><input type="number" min="1" max="5" value={maxPages} onChange={(event) => setMaxPages(Number(event.target.value) || 1)} /></label>
-        </div>
-      ) : (
-        <>
-          <textarea value={videoUrls} onChange={(event) => setVideoUrls(event.target.value)} placeholder="Paste one YouTube video URL per line" />
-          <div className="import-controls">
-            <label><span>Max videos</span><input type="number" min="1" max="10" value={maxVideos} onChange={(event) => setMaxVideos(Number(event.target.value) || 1)} /></label>
-            <label><span>Max pages/video</span><input type="number" min="1" max="5" value={maxPages} onChange={(event) => setMaxPages(Number(event.target.value) || 1)} /></label>
-            <label><span>Max comments/video</span><input type="number" min="1" max="500" value={maxCommentsPerVideo} onChange={(event) => setMaxCommentsPerVideo(Number(event.target.value) || 100)} /></label>
-          </div>
-        </>
-      )}
-
-      <div className="approval-hooks">
-        {scanMode === 'niche' ? (
-          <button className="workflow-button safe" type="button" disabled={loading || nicheProfile === 'custom'} onClick={scanByNiche}>{loading ? 'Scanning…' : `Scan ${nicheProfileLabels[nicheProfile]}`}</button>
-        ) : (
-          <button className="workflow-button safe" type="button" disabled={loading || !videoUrls.trim()} onClick={importVideos}>{loading ? 'Working…' : 'Import read-only comments'}</button>
-        )}
-        <button className="workflow-button" type="button" disabled={loading} onClick={loadPreviousScans}>Previous Scans</button>
-        <button className="workflow-button" type="button" disabled={loading} onClick={loadPreviousScanResults}>Load previous scan results</button>
-      </div>
-      {previousScans.length > 0 && (
-        <div className="previous-scans-list" aria-label="Previous scans">
-          <strong>Previous Scans</strong>
-          {previousScans.slice(0, 10).map((scan) => (
-            <div key={scan.id} className="previous-scan-row">
-              <button className="previous-scan-title" type="button" onClick={() => loadOnePreviousScan(scan.id)}>
-                {scan.title || scan.id}
-              </button>
-              <div className="previous-scan-meta">
-                <small>{scan.status} · {scan.commentsFetched} comments · quota {scan.estimatedQuotaUnits || 0}</small>
-                <button className="delete-scan-button" type="button" onClick={() => deletePreviousScan(scan.id)}>Delete</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      <small className="workflow-note">{message}</small>
-    </section>
-  );
-}
-
 
 function App() {
-  const fixtureItems = useMemo(buildItems, []);
-  const [importedItems, setImportedItems] = useState<ScoredFixture[]>([]);
-  const [dataSource, setDataSource] = useState<'fixtures' | 'imported' | 'combined'>('imported');
-  const [showDemoData, setShowDemoData] = useState(false);
-  const allItems = useMemo(() => !showDemoData && dataSource === 'fixtures' ? importedItems : dataSource === 'fixtures' ? fixtureItems : dataSource === 'imported' ? importedItems : [...importedItems, ...fixtureItems], [fixtureItems, importedItems, dataSource, showDemoData]);
-  const [selectedId, setSelectedId] = useState(allItems[0]?.id);
-  const [status, setStatus] = useState<Status>('all');
-  const [scoreBand, setScoreBand] = useState<ScoreBand>('all');
-  const [niche, setNiche] = useState('all');
-  const [opportunityType, setOpportunityType] = useState<OpportunityType>('all');
-  const [workTab, setWorkTab] = useState<WorkTab>('hot');
-  const [nicheProfile, setNicheProfile] = useState<NicheProfile>('affiliate_marketing');
-  const [freshnessWindow, setFreshnessWindow] = useState<FreshnessWindow>('14');
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [importSummary, setImportSummary] = useState<ImportSummary | undefined>();
+  const [items, setItems] = useState<ScoredFixture[]>([]);
+  const [summary, setSummary] = useState<ScanSummary | undefined>();
+  const [isDemo, setIsDemo] = useState(false);
+  const [niche, setNiche] = useState<NicheProfile>('work_from_home');
+  const [nicheChosen, setNicheChosen] = useState(false);
+  const [tab, setTab] = useState<ReviewTab>('best');
+  const [age, setAge] = useState<FreshnessWindow>('all');
+  const [statusFilter, setStatusFilter] = useState<Status>('all');
+  const [scoreFilter, setScoreFilter] = useState<ScoreBand>('all');
+  const [typeFilter, setTypeFilter] = useState<OpportunityType>('all');
+  const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [statuses, setStatuses] = useState<Record<string, LocalStatus>>({});
+  const [selectedDrafts, setSelectedDrafts] = useState<Record<string, string>>({});
   const [healthConfig, setHealthConfig] = useState<HealthConfig>({});
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState<AppSettings>(() => ({ defaultScanDepth: 5, defaultFreshnessDays: 30, replyTone: 'Helpful, concise, practical', enabledNiches: ['affiliate_marketing', 'money_making', 'work_from_home', 'side_hustles', 'biz_opp', 'ai_tools', 'traffic_leads', 'organic_traffic'] }));
-  const [localStatuses, setLocalStatuses] = useState<Record<string, LocalStatus>>(() => Object.fromEntries(allItems.map((item) => [item.id, item.opportunity.status])));
-  const [selectedDrafts, setSelectedDrafts] = useState<Record<string, string>>({});
-  const detailRef = React.useRef<HTMLElement | null>(null);
-  const filtersRef = React.useRef<HTMLElement | null>(null);
+  const [settings, setSettings] = useState<AppSettings>({ defaultScanDepth: 5, defaultFreshnessDays: 30, replyTone: 'Helpful, concise, practical', enabledNiches: ALL_NICHES });
+  const replyRef = useRef<HTMLDivElement | null>(null);
 
-  const niches = useMemo(() => ['all', ...Array.from(new Set(allItems.map((item) => item.video.topic))).sort()], [allItems]);
-  const filteredItems = useMemo(() => allItems.filter((item) => {
-    const localStatus = localStatuses[item.id] ?? item.opportunity.status;
-    const statusMatch = status === 'all' || localStatus === status;
-    const scoreMatch = scoreBand === 'all' || getScoreBand(item.score.overallScore) === scoreBand;
-    const nicheMatch = niche === 'all' || item.video.topic === niche;
-    const typeMatch = opportunityType === 'all' || item.score.opportunityType === opportunityType;
-    const done = ['replied', 'rejected'].includes(localStatus);
-    const fresh = isFreshForWindow(item, freshnessWindow);
-    const stale = !isFreshForWindow(item, '14');
-    const tabMatch = workTab === 'hot'
-      ? !done && item.score.opportunityType !== 'low_fit_comment'
-      : workTab === 'buyer'
-        ? !done && fresh && item.score.opportunityType === 'consumer_buyer_question'
-        : workTab === 'publisher'
-          ? !done && fresh && item.score.opportunityType === 'affiliate_publisher_opportunity'
-          : workTab === 'content'
-            ? !done && fresh && !isNoise(item) && (item.score.detectedOfferFit.length > 0 || item.score.evidenceSnippets.length > 0)
-            : workTab === 'low_fit'
-              ? !done && fresh && item.score.opportunityType === 'low_fit_comment'
-              : workTab === 'stale'
-                ? !done && stale && !isNoise(item)
-                : done;
-    return statusMatch && scoreMatch && nicheMatch && typeMatch && tabMatch;
-  }), [allItems, localStatuses, status, scoreBand, niche, opportunityType, workTab, freshnessWindow]);
-
-  const selectedItem = filteredItems.find((item) => item.id === selectedId) ?? filteredItems[0] ?? allItems[0];
-  function selectOpportunity(id: string) {
-    setSelectedId(id);
-    window.setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
-  }
-  const selectedStatus = selectedItem ? localStatuses[selectedItem.id] ?? selectedItem.opportunity.status : 'new';
-  useEffect(() => { if (!selectedItem && allItems[0]) setSelectedId(allItems[0].id); }, [selectedItem, allItems]);
   useEffect(() => {
     apiJson('/api/config').then(setHealthConfig).catch((error) => console.warn('Configuration check failed safely', error));
   }, []);
 
-  const stats = {
-    urgent: allItems.filter((item) => item.score.priority === 'urgent').length,
-    consumerQuestions: allItems.filter((item) => item.score.opportunityType === 'consumer_buyer_question').length,
-    nicheLeads: allItems.filter((item) => item.score.opportunityType === 'niche_lead').length,
-    safeReplies: allItems.filter((item) => item.score.recommendedAction === 'reply' && item.score.riskLevel !== 'high').length,
-    risky: allItems.filter((item) => item.score.riskLevel !== 'low').length,
-    approved: allItems.filter((item) => (localStatuses[item.id] ?? item.opportunity.status) === 'approved').length,
-  };
+  const statusOf = (item: ScoredFixture) => statuses[item.id] ?? item.opportunity.status;
 
-  function openFilterResults() {
-    setShowAdvancedFilters(true);
-    window.setTimeout(() => filtersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  // Buyer / site-owner tabs only appear when that kind of comment is in the data (pasted video links).
+  const tabs = useMemo(() => {
+    const extra: ReviewTab[] = [];
+    if (items.some((item) => item.score.opportunityType === 'consumer_buyer_question')) extra.push('buyer');
+    if (items.some((item) => item.score.opportunityType === 'affiliate_publisher_opportunity')) extra.push('publisher');
+    return [...CORE_TABS.slice(0, 2), ...extra, ...CORE_TABS.slice(2)];
+  }, [items]);
+
+  const ageFiltered = useMemo(() => items.filter((item) => {
+    const statusMatch = statusFilter === 'all' || statusOf(item) === statusFilter;
+    const scoreMatch = scoreFilter === 'all' || item.score.priority === scoreFilter;
+    const typeMatch = typeFilter === 'all' || item.score.opportunityType === typeFilter;
+    return isWithinAge(item, age) && statusMatch && scoreMatch && typeMatch;
+  }), [items, age, statusFilter, scoreFilter, typeFilter, statuses]);
+  const counts = useMemo(() => {
+    const result = { best: 0, maybe: 0, not_fit: 0, done: 0, buyer: 0, publisher: 0 } as Record<ReviewTab, number>;
+    for (const item of ageFiltered) for (const t of tabs) if (matchesTab(item, statusOf(item), t)) result[t] += 1;
+    return result;
+  }, [ageFiltered, tabs, statuses]);
+  const visible = useMemo(() => ageFiltered.filter((item) => matchesTab(item, statusOf(item), tab)), [ageFiltered, tab, statuses]);
+  const selected = visible.find((item) => item.id === selectedId) ?? visible[0];
+  const nicheLeadCount = items.filter((item) => item.score.opportunityType === 'niche_lead').length;
+
+  useEffect(() => { if (!tabs.includes(tab)) setTab('best'); }, [tabs, tab]);
+
+  const stepStates: StepState[] = [
+    nicheChosen || items.length ? 'done' : 'current',
+    items.length ? 'done' : nicheChosen ? 'current' : 'upcoming',
+    !items.length ? 'upcoming' : selectedId ? 'done' : 'current',
+    items.length && selectedId ? 'current' : 'upcoming',
+  ];
+
+  function applyResult({ items: next, summary: nextSummary }: ScanResult) {
+    setItems(next);
+    setSummary(nextSummary);
+    setIsDemo(false);
+    setStatuses((current) => ({ ...current, ...Object.fromEntries(next.map((item) => [item.id, item.opportunity.status])) }));
+    setAge('all');
+    setStatusFilter('all');
+    setScoreFilter('all');
+    setTypeFilter('all');
+    setTab('best');
+    setSelectedId(undefined);
+    window.setTimeout(() => scrollToStep(3), 50);
   }
 
   function resetForNewScan() {
-    setImportedItems([]);
-    setSelectedId(fixtureItems[0]?.id || '');
-    setDataSource('imported');
-    setWorkTab('hot');
-    setFreshnessWindow('30');
-    setStatus('all');
-    setScoreBand('all');
-    setOpportunityType('all');
-    setNiche('all');
-    setImportSummary(undefined);
-    setShowAdvancedFilters(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setItems([]);
+    setSummary(undefined);
+    setIsDemo(false);
+    setSelectedId(undefined);
+    setTab('best');
+    setAge('all');
+    setStatusFilter('all');
+    setScoreFilter('all');
+    setTypeFilter('all');
+    scrollToStep(1);
   }
 
-  async function showBestComments() {
-    setDataSource('imported');
-    setWorkTab('hot');
-    setFreshnessWindow('all');
-    setStatus('all');
-    setScoreBand('all');
-    setOpportunityType('all');
-    setNiche('all');
-
-    if (importedItems.length) {
-      return;
-    }
-
-    try {
-      const body = await apiJson('/api/opportunities?limit=250');
-      const items = (body.items || []).map(normaliseImportedOpportunity);
-      setImportedItems(items);
-      setLocalStatuses((current) => ({ ...Object.fromEntries(items.map((item: ScoredFixture) => [item.id, item.opportunity.status])), ...current }));
-      if (items[0]) setSelectedId(items[0].id);
-    } catch (error) {
-      console.warn('Could not load best comments', error);
-    }
+  function showDemo() {
+    const demo = buildDemoItems();
+    setItems(demo);
+    setIsDemo(true);
+    setSummary(buildScanSummary('saved', demo, {}));
+    setStatuses((current) => ({ ...current, ...Object.fromEntries(demo.map((item) => [item.id, item.opportunity.status])) }));
+    setTab('best');
   }
 
-  async function generateDraftsForSelected() {
-    if (!selectedItem) return;
-    const body = await apiJson(`/api/opportunities/${encodeURIComponent(selectedItem.id)}/ai-drafts`, { method: 'POST', body: JSON.stringify({}) });
+  function selectLead(id: string) {
+    setSelectedId(id);
+    window.setTimeout(() => replyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  }
+
+  async function updateStatus(to: LocalStatus) {
+    if (!selected) return;
+    const target = selected;
+    setStatuses((current) => ({ ...current, [target.id]: to }));
+    if (isDemo) return;
+    const endpoint = to === 'replied' ? `/api/opportunities/${encodeURIComponent(target.id)}/manual-replied` : `/api/opportunities/${encodeURIComponent(target.id)}/status`;
+    apiJson(endpoint, { method: 'POST', body: JSON.stringify({ toStatus: to, note: 'Updated from the review screen.' }) })
+      .catch((error) => console.warn('Saving status failed safely', error));
+  }
+
+  function selectDraft(draftId: string) {
+    if (!selected) return;
+    const target = selected;
+    setSelectedDrafts((current) => ({ ...current, [target.id]: draftId }));
+    if (isDemo) return;
+    apiJson(`/api/opportunities/${encodeURIComponent(target.id)}/selected-draft`, { method: 'POST', body: JSON.stringify({ draftId }) })
+      .catch((error) => console.warn('Saving selected draft failed safely', error));
+  }
+
+  async function generateDrafts() {
+    if (!selected) return;
+    if (isDemo) throw new Error('Demo comments cannot get new ideas. Run a real scan first.');
+    const body = await apiJson(`/api/opportunities/${encodeURIComponent(selected.id)}/ai-drafts`, { method: 'POST', body: JSON.stringify({}) });
     const updated = normaliseImportedOpportunity(body.item);
-    setImportedItems((current) => current.map((item) => item.id === updated.id ? updated : item));
+    setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
     setSelectedDrafts((current) => ({ ...current, [updated.id]: updated.opportunity.replyDrafts[0]?.id || current[updated.id] }));
   }
 
-  async function updateSelectedStatus(to: LocalStatus) {
-    if (!selectedItem) return;
-    setLocalStatuses((current) => ({ ...current, [selectedItem.id]: to }));
-    if (importedItems.some((item) => item.id === selectedItem.id)) {
-      const endpoint = to === 'replied' ? `/api/opportunities/${encodeURIComponent(selectedItem.id)}/manual-replied` : `/api/opportunities/${encodeURIComponent(selectedItem.id)}/status`;
-      apiJson(endpoint, { method: 'POST', body: JSON.stringify({ toStatus: to, note: 'Updated from dashboard review workflow.' }) })
-        .catch((error) => console.warn('Persist status failed safely', error));
+  async function signOut() {
+    try {
+      await apiJson('/logout', { method: 'POST' });
+    } finally {
+      window.location.assign('/login');
     }
   }
 
   return (
-    <main className="dashboard-shell">
-      <section className="hero-panel">
-        <div>
-          <span className="eyebrow">The Best Lead System · guided YouTube lead review · no auto-posting</span>
-          <h1>Find fresh YouTube comments worth replying to.</h1>
-          <p>Choose a niche, scan public YouTube comments, review the best leads first, generate safe draft ideas, then copy and post manually only if you approve.</p>
-        </div>
-        <div className="stats-row">
-          <StatCard label="Saved leads" value={importedItems.length} note="real imported queue" />
-          <StatCard label="Best comments" value={filteredItems.length} note={workTabLabels[workTab]} />
-          <StatCard label="Fresh comments" value={allItems.filter((item) => isFreshForWindow(item, '14')).length} note="last 14 days" />
-          <StatCard label="Draft mode" value={healthConfig.aiDraftsConfigured ? 'AI' : 'Safe'} note={healthConfig.aiDraftsConfigured ? 'AI-powered' : 'template fallback'} />
-        </div>
-      </section>
-
-
-      <WorkflowSteps step={importedItems.length ? 'review' : 'import'} importedCount={importedItems.length} selectedItem={selectedItem} />
-
-      <section className="start-panel" aria-label="Start here">
-        <div>
-          <span className="eyebrow">Start here</span>
-          <h2>Best Comments to Act on Right Now</h2>
-          <p>Shows the strongest non-done comments from the current scan or previous scan you loaded. Use older research ideas for older/low-intent comments.</p>
-        </div>
-        <div className="approval-hooks">
-          <button className="workflow-button safe" type="button" onClick={showBestComments}>Show Best Comments</button>
-          <button className="workflow-button" type="button" onClick={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }}>Show Older Research Ideas</button>
-          <button className="workflow-button" type="button" onClick={openFilterResults}>Filter Results</button>
-          <button className="workflow-button" type="button" onClick={resetForNewScan}>Reset for New Scan</button>
-          <button className="workflow-button" type="button" onClick={() => setShowSettings((value) => !value)}>Settings</button>
-          <button className="workflow-button" type="button" onClick={() => exportOpportunitiesCsv(filteredItems.length ? filteredItems : importedItems)}>Export CSV</button>
-          <button className="workflow-button" type="button" onClick={async () => {
-            await apiJson('/logout', { method: 'POST' });
-            window.location.assign('/login');
-          }}>Sign out</button>
-          <small className="reset-helper-note">Previous scans will not be deleted.</small>
-        </div>
-      </section>
-
-      {showSettings && (
-        <section className="settings-panel" aria-label="Dashboard settings">
-          <div>
-            <span className="eyebrow">Settings</span>
-            <h2>Default scan and reply settings</h2>
-            <p>These settings affect the next scan you run in this browser. They do not delete or change previous scans.</p>
-          </div>
-          <div className="settings-grid">
-            <label><span>Default scan depth</span><select value={settings.defaultScanDepth} onChange={(event) => setSettings((current) => ({ ...current, defaultScanDepth: Number(event.target.value) }))}>
-              <option value={5}>Quick · 5 videos</option>
-              <option value={10}>Standard · 10 videos</option>
-              <option value={25}>Deep · 25 videos</option>
-            </select></label>
-            <label><span>Default freshness window</span><select value={settings.defaultFreshnessDays} onChange={(event) => setSettings((current) => ({ ...current, defaultFreshnessDays: Number(event.target.value) }))}>
-              <option value={7}>Last 7 days</option>
-              <option value={14}>Last 14 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
-            </select></label>
-            <label><span>Reply tone</span><input value={settings.replyTone} onChange={(event) => setSettings((current) => ({ ...current, replyTone: event.target.value }))} /></label>
-          </div>
-          <small className="workflow-note">Niche-specific scoring and OpenAI reply prompts are now active. More detailed per-niche tuning can be added as we learn which scans perform best.</small>
-        </section>
-      )}
-
-      <section className="filters niche-profile-filters" aria-label="Niche profile selector">
-        <div>
-          <span className="step-label">Step 1 · Niche profile</span>
-          {(['affiliate_marketing', 'money_making', 'work_from_home', 'side_hustles', 'biz_opp', 'ai_tools', 'traffic_leads', 'organic_traffic', 'custom'] as NicheProfile[]).map((value) => (
-            <FilterButton key={value} active={nicheProfile === value} value={value} label={nicheProfileLabels[value]} onClick={setNicheProfile} />
-          ))}
-        </div>
-        <small className="workflow-note">These profiles now drive the YouTube search query bundle. Scoring is still strongest for affiliate/buyer intent and will get more niche-specific in later passes.</small>
-      </section>
-
-      <ImportPanel nicheProfile={nicheProfile} settings={settings} onImported={({ items, message, summary }) => {
-        setImportedItems(items);
-        setImportSummary(summary);
-        setDataSource(items.length ? 'imported' : 'imported');
-        setWorkTab(summary?.hotCount || summary?.nicheLeadCount ? 'hot' : summary?.staleCount ? 'stale' : 'publisher');
-        if (summary?.staleCount && !summary.hotCount) setFreshnessWindow('all');
-        setLocalStatuses((current) => ({ ...Object.fromEntries(items.map((item: ScoredFixture) => [item.id, item.opportunity.status])), ...current }));
-        if (items[0]) setSelectedId(items[0].id);
-        console.info(message);
-      }} />
-
-      <ImportSummaryPanel
-        summary={importSummary}
-        onReview={() => { setDataSource('imported'); setWorkTab('hot'); setFreshnessWindow('14'); }}
-        onShowStale={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }}
+    <div className="dashboard-shell">
+      <AppHeader
+        leadCount={items.length && !isDemo && (nicheLeadCount || summary?.source === 'scan') ? nicheLeadCount : null}
+        onSettings={() => setShowSettings((value) => !value)}
+        settingsOpen={showSettings}
+        onExport={() => exportOpportunitiesCsv(visible.length ? visible : items, statuses)}
+        exportDisabled={!items.length}
+        onSignOut={signOut}
       />
+      {showSettings && <SettingsPanel settings={settings} onChange={setSettings} onClose={() => setShowSettings(false)} />}
 
-      <section className="filters work-tabs" aria-label="Review inbox tabs">
-        <div>
-          <span className="step-label">Step 3 · Review inbox</span>
-          {(['hot', 'buyer', 'publisher', 'content', 'low_fit', 'stale', 'done'] as WorkTab[]).map((value) => (
-            <FilterButton key={value} active={workTab === value} value={value} label={workTabLabels[value]} onClick={setWorkTab} />
-          ))}
-        </div>
-      </section>
+      <main>
+        <h1 className="visually-hidden">Find and reply to YouTube leads</h1>
+        <StepProgress states={stepStates} />
 
-      {showAdvancedFilters && (
-        <>
-          <section ref={filtersRef} className="filters freshness-filters" aria-label="Comment freshness filters">
-            <div>
-              <span>Freshness window</span>
-              {(['7', '14', '30', 'all'] as FreshnessWindow[]).map((value) => (
-                <FilterButton key={value} active={freshnessWindow === value} value={value} label={value === 'all' ? 'All ages' : `Last ${value} days`} onClick={setFreshnessWindow} />
-              ))}
-            </div>
-            <small className="workflow-note">Default is 14 days. Older comments are better for research/content ideas than direct replies unless the thread is still active.</small>
-          </section>
-
-          <section className="filters data-source-filters" aria-label="Data source filters">
-            <div>
-              <span>Data source</span>
-              <FilterButton active={dataSource === 'imported'} value="imported" label={`Imported (${importedItems.length})`} onClick={setDataSource} />
-              <FilterButton active={dataSource === 'combined'} value="combined" label="Combined" onClick={setDataSource} />
-              <button className="chip" type="button" onClick={() => { setShowDemoData((value) => !value); setDataSource('fixtures'); }}>{showDemoData ? 'Hide demo sample data' : 'Show demo sample data'}</button>
-            </div>
-          </section>
-
-          <section className="filters" aria-label="Dashboard filters">
-            <div>
-              <span>Status</span>
-              {(Object.keys(statusLabels) as Status[]).map((value) => (
-                <FilterButton key={value} active={status === value} value={value} label={statusLabels[value]} onClick={setStatus} />
-              ))}
-            </div>
-            <div>
-              <span>Score</span>
-              {(['all', 'urgent', 'high', 'medium', 'low'] as ScoreBand[]).map((value) => (
-                <FilterButton key={value} active={scoreBand === value} value={value} label={value === 'all' ? 'All scores' : value} onClick={setScoreBand} />
-              ))}
-            </div>
-            <div>
-              <span>Type</span>
-              {(['all', 'niche_lead', 'affiliate_publisher_opportunity', 'consumer_buyer_question', 'low_fit_comment'] as OpportunityType[]).map((value) => (
-                <FilterButton key={value} active={opportunityType === value} value={value} label={opportunityTypeLabels[value]} onClick={setOpportunityType} />
-              ))}
-            </div>
-            <label>
-              <span>Niche</span>
-              <select value={niche} onChange={(event) => setNiche(event.target.value)}>
-                {niches.map((value) => <option key={value} value={value}>{value === 'all' ? 'All niches' : formatTopic(value)}</option>)}
-              </select>
-            </label>
-          </section>
-        </>
-      )}
-
-      <section className="workspace-grid">
-        <div className="opportunity-list" aria-label="Ranked opportunities">
-          <div className="list-heading">
-            <div>
-              <span className="eyebrow">Ranked queue</span>
-              <h2>{filteredItems.length} opportunities</h2>
-            </div>
-            <small>Sorted by live scoring output</small>
+        <StepSection n={1} state={stepStates[0]} help="Pick the kind of person you want to help. We search YouTube videos where those people leave comments.">
+          <NichePicker value={niche} enabled={settings.enabledNiches} onChange={(value) => { setNiche(value); setNicheChosen(true); }} />
+          <div className="approval-hooks">
+            <button type="button" className="workflow-button safe" onClick={() => { setNicheChosen(true); scrollToStep(2); }}>Next: run the scan</button>
           </div>
-          {filteredItems.length ? filteredItems.map((item) => (
-            <OpportunityCard
-              key={item.id}
-              item={item}
-              localStatus={localStatuses[item.id] ?? item.opportunity.status}
-              selected={selectedItem.id === item.id}
-              onSelect={() => selectOpportunity(item.id)}
-            />
-          )) : <SmartEmptyState importedCount={importedItems.length} dataSource={dataSource} workTab={workTab} freshnessWindow={freshnessWindow} onShowAll={() => { setDataSource('imported'); setWorkTab('publisher'); setFreshnessWindow('all'); }} onShowStale={() => { setDataSource('imported'); setWorkTab('stale'); setFreshnessWindow('all'); }} onImport={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />}
+        </StepSection>
+
+        <StepSection n={2} state={stepStates[1]} help={`Pick a size and press the button. We read public comments on recent ${nicheLabel(niche)} videos; nothing is posted.`}>
+          <ScanPanel niche={niche} settings={settings} onResult={applyResult} onReset={resetForNewScan} hasResults={items.length > 0} />
+          {summary && !isDemo && <ScanResultCard summary={summary} onShow={(next) => { setTab(next); scrollToStep(3); }} />}
+        </StepSection>
+
+        <StepSection
+          n={3}
+          state={stepStates[2]}
+          help="Start with Best leads. Click a comment to see why it was picked and to write your reply."
+          aside={items.length > 0 ? <AgeFilter value={age} onChange={setAge} /> : undefined}
+        >
+          {isDemo && <p className="demo-banner">You are looking at demo comments. Run a scan in Step 2 to see real ones.</p>}
+          {items.length > 0 && <ReviewTabs tabs={tabs} active={tab} counts={counts} onChange={(next) => { setTab(next); setSelectedId(undefined); }} />}
+          {items.length > 0 && (
+            <details className="more-options review-filters">
+              <summary>More filters</summary>
+              <div className="options-grid">
+                <label><span>Review status</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as Status)}>
+                  <option value="all">Any status</option>
+                  {(Object.keys(statusLabels) as LocalStatus[]).map((value) => <option key={value} value={value}>{statusLabels[value]}</option>)}
+                </select></label>
+                <label><span>Lead strength</span><select value={scoreFilter} onChange={(event) => setScoreFilter(event.target.value as ScoreBand)}>
+                  <option value="all">Any strength</option>
+                  <option value="urgent">Very high</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+                </select></label>
+                <label><span>Kind of comment</span><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as OpportunityType)}>
+                  {(Object.keys(typeLabels) as OpportunityType[]).filter((value) => value === 'all' || items.some((item) => item.score.opportunityType === value)).map((value) => <option key={value} value={value}>{typeLabels[value]}</option>)}
+                </select></label>
+              </div>
+              {isDemo && <p className="workflow-note">These are example comments. Run or load a scan in Step 2 for real ones.</p>}
+            </details>
+          )}
+          <div className="workspace-grid">
+            <div className="opportunity-list" id="lead-list" role={items.length ? 'tabpanel' : undefined} aria-labelledby={items.length ? `tab-${tab}` : undefined}>
+              {visible.length ? (
+                <ul className="lead-list">
+                  {visible.map((item) => (
+                    <LeadCard key={item.id} item={item} status={statusOf(item)} selected={selected?.id === item.id} onSelect={() => selectLead(item.id)} />
+                  ))}
+                </ul>
+              ) : (
+                <>
+                  <EmptyList hasData={items.length > 0} tab={tab} ageFiltered={age !== 'all'} onShowAnyAge={() => setAge('all')} onGoToScan={() => scrollToStep(2)} />
+                  {!items.length && <div className="approval-hooks"><button type="button" className="workflow-button" onClick={showDemo}>Or look around with demo comments</button></div>}
+                </>
+              )}
+            </div>
+
+            <div ref={replyRef} id="step-4" className={`step-section reply-step ${stepStates[3]}`} aria-labelledby="step-4-title">
+              <div className="step-heading">
+                <div>
+                  <span className="step-badge">Step 4 of 4 · {stepStates[3] === 'current' ? 'You are here' : 'Next'}</span>
+                  <h2 id="step-4-title" tabIndex={-1}>Reply</h2>
+                  <p className="step-help">Pick a reply idea, copy it, post it on YouTube yourself, then mark it done.</p>
+                </div>
+              </div>
+              {selected ? (
+                <ReplyPanel
+                  key={selected.id}
+                  item={selected}
+                  status={statusOf(selected)}
+                  selectedDraftId={selectedDrafts[selected.id]}
+                  aiDrafts={Boolean(healthConfig.aiDraftsConfigured)}
+                  onSelectDraft={selectDraft}
+                  onTransition={updateStatus}
+                  onGenerateDrafts={generateDrafts}
+                />
+              ) : <p className="empty-state">Pick a comment in Step 3 to reply to it.</p>}
+            </div>
+          </div>
+        </StepSection>
+      </main>
+    </div>
+  );
+}
+
+function StandaloneModeGate({ children }: { children: React.ReactNode }) {
+  const [isFramed, setIsFramed] = useState(false);
+  const [currentUrl, setCurrentUrl] = useState('');
+  useEffect(() => {
+    setIsFramed(window.self !== window.top);
+    setCurrentUrl(window.location.href);
+  }, []);
+
+  function leaveIframe() {
+    try { window.open(currentUrl, '_blank', 'noopener,noreferrer'); } catch { /* fall through */ }
+    try { window.top?.location.assign(currentUrl); } catch { window.location.assign(currentUrl); }
+  }
+
+  if (!isFramed) return <>{children}</>;
+  return (
+    <main className="standalone-only-shell">
+      <section className="standalone-only-card">
+        <span className="eyebrow">Open in its own tab</span>
+        <h1>Open The Best Lead System in a normal browser tab</h1>
+        <p>YouTube links do not work inside an embedded preview, so this app only runs in its own tab.</p>
+        <div className="standalone-actions big">
+          <button className="source-button primary" type="button" onClick={leaveIframe}>Open in a new tab</button>
+          <button className="source-button" type="button" onClick={() => navigator.clipboard.writeText(currentUrl)}>Copy link</button>
         </div>
-        {selectedItem && (
-          <section ref={detailRef}>
-          <DetailPanel
-            item={selectedItem}
-            localStatus={selectedStatus}
-            selectedDraftId={selectedDrafts[selectedItem.id]}
-            onSelectDraft={(draftId) => {
-              setSelectedDrafts((current) => ({ ...current, [selectedItem.id]: draftId }));
-              if (importedItems.some((item) => item.id === selectedItem.id)) {
-                apiJson(`/api/opportunities/${encodeURIComponent(selectedItem.id)}/selected-draft`, { method: 'POST', body: JSON.stringify({ draftId }) })
-                  .catch((error) => console.warn('Persist selected draft failed safely', error));
-              }
-            }}
-            onTransition={updateSelectedStatus}
-            onGenerateDrafts={generateDraftsForSelected}
-          />
-          </section>
-        )}
+        <code className="standalone-url">{currentUrl}</code>
       </section>
     </main>
   );
@@ -1452,6 +299,6 @@ fetch('/api/session').then(async (response) => {
     return;
   }
   const session = await response.json();
-  csrfToken = session.csrfToken;
+  setCsrfToken(session.csrfToken);
   root.render(<StandaloneModeGate><App /></StandaloneModeGate>);
 }).catch(() => root.render(<p>Unable to connect. Please reload to try again.</p>));

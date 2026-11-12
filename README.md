@@ -42,7 +42,13 @@ AUTH_ORIGIN=http://127.0.0.1:4174 OWNER_PASSWORD='local-dev-password-at-least-16
 - Niche scans (imports with a `profileId`) score each comment with `server/scoring/nicheLead.js`: `niche_lead` ("Niche lead") or `low_fit_comment` with a machine `lowFitReason` (`praise_only`, `video_housekeeping`, `self_promotion`, `links_only`, `greeting_only`, `too_short`, `off_topic`, `generic_question`, `channel_owner`) and a plain-English `summary`. Manual URL imports still use `src/scoring/scoring.js` unchanged.
 - Best Comments hides low-fit items; browse them in the **Low fit** tab. CSV exports include the reason.
 - `scanNiche` asks search for up to 2x `maxVideos` candidates (cap 50), makes one batched `videos.list` call (~1 quota unit) for comment counts, drops videos under 10 comments, prefers well-commented videos with beginner / legit / honest titles, and keeps the top `maxVideos`. If `videos.list` fails it keeps search order and records a `video_ranking_failed` entry in `searchErrors`.
-- Tests: `npm run check:niche` (offline; mock YouTube client, no paid calls).
+- Scan results are loaded by the scan's own opportunity ids (`run.opportunityIds`, up to 1000), never by a store-wide top-N, so every comment a scan reads is listed.
+- The comment budget (`maxCommentsPerRun`, max 300) is shared fairly: each video gets `ceil(remaining / videos left)`, and whatever a video doesn't use rolls forward. Each run records `videoResults` per video (read, listed, repeats, capped, why it stopped), and the scan response includes a `summary` (`headline` such as "5 leads + 53 low fit", `notShown`, per-video breakdown).
+- Tests: `npm run check:niche` and `npm run check:scan` (offline; mock YouTube client, temp store, no paid calls).
+
+## Dashboard layout
+
+The first screen is a guided 4-step flow: 1) choose what you are looking for, 2) run the scan (Quick / Standard / Deep, with More options, Advanced video links and saved scans), 3) review your leads (Best leads, Maybe, Not a fit, Done; Buyer and Site-owner tabs only appear when those comments exist; status, strength and type filters live under More filters), 4) reply (reply ideas, copy, open the comment, mark done). Settings, Export CSV and Sign out are in the header. UI code lives in `src/ui/`; `src/scoring/leadBuckets.js` is the shared rule for which tab a comment belongs to.
 
 ## Persistent storage on Render
 

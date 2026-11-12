@@ -1,11 +1,12 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
-import { JsonImportStore, hydrateOpportunity } from './persistence/store.js';
+import { JsonImportStore, hydrateOpportunity, RUN_RESULT_LIMIT } from './persistence/store.js';
+import { buildRunSummary } from './import/runSummary.js';
+import { formatScanTitle, scanNiche } from './scan/scanNiche.js';
 import { importYouTubeVideos } from './import/importService.js';
 import { YouTubeReadOnlyClient } from './youtube/client.js';
-import { listNicheProfiles, resolveNicheProfile } from './youtube/nicheProfiles.js';
-import { selectNicheVideos } from './youtube/videoRanking.js';
+import { listNicheProfiles } from './youtube/nicheProfiles.js';
 import { generateReplyDrafts } from './ai/draftGenerator.js';
 import { createAuth } from './auth.js';
 
@@ -71,76 +72,6 @@ function routeError(response, error) {
   sendJson(response, status, { error: { code: error?.code || 'server_error', message: error?.message || 'Server error.' } });
 }
 
-
-
-function formatScanTitle({ profileLabel, daysBack, maxVideos, commentsFetched, startedAt }) {
-  const date = new Date(startedAt || Date.now()).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
-  return `${date} UTC · ${profileLabel || 'Manual scan'} · ${daysBack || 'custom'} days · ${maxVideos || 'manual'} videos · ${commentsFetched || 0} comments`;
-}
-
-function daysAgoIso(days) {
-  const date = new Date(Date.now() - Math.max(1, Number(days) || 14) * 86400000);
-  return date.toISOString();
-}
-
-function clampNumber(value, min, max, fallback) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.floor(n)));
-}
-
-async function scanNiche({ body, store, youtubeClient }) {
-  const profileId = body.profileId || body.nicheProfile || 'affiliate_marketing';
-  const profile = resolveNicheProfile(profileId);
-  const maxVideos = clampNumber(body.maxVideos, 1, 25, 10);
-  const daysBack = clampNumber(body.daysBack, 1, 90, 14);
-  const queries = Array.isArray(body.queries) && body.queries.length
-    ? body.queries.map((value) => String(value).trim()).filter(Boolean).slice(0, 8)
-    : profile.queries;
-  const publishedAfter = daysAgoIso(daysBack);
-  const selection = await selectNicheVideos({ youtubeClient, queries, maxVideos, publishedAfter, order: body.order || 'relevance' });
-  const found = selection.videos;
-  const { searchErrors, estimatedSearchQuotaUnits, estimatedRankingQuotaUnits } = selection;
-
-  const run = await importYouTubeVideos({
-    inputs: found.map((video) => video.url),
-    options: {
-      ...body,
-      maxVideos,
-      maxPagesPerVideo: body.maxPagesPerVideo || body.maxPages || 1,
-      maxCommentsPerRun: body.maxCommentsPerRun || body.maxComments || 250,
-      maxResultsPerPage: body.maxResultsPerPage || body.maxCommentsPerVideo || 50,
-      profileId,
-    },
-    store,
-    youtubeClient,
-    metadata: { scanType: 'niche', profileId, profileLabel: profile.label, queries, daysBack, maxVideos, order: body.order || 'relevance', profileId, profileLabel: profile.label },
-  });
-  run.estimatedQuotaUnits += estimatedSearchQuotaUnits + estimatedRankingQuotaUnits;
-  run.title = formatScanTitle({ profileLabel: profile.label, daysBack, maxVideos, commentsFetched: run.commentsFetched, startedAt: run.startedAt });
-  for (const error of searchErrors) run.errors.push(error);
-
-  const foundIds = new Set(found.map((video) => video.id));
-  const allOpportunities = await store.listOpportunities({ limit: 500 });
-  const currentScanItems = allOpportunities.filter((item) => foundIds.has(item.video?.youtubeVideoId || item.video?.id || item.videoId));
-
-  return {
-    profileId,
-    profileLabel: profile.label,
-    queries,
-    daysBack,
-    videosFound: found,
-    candidatesConsidered: selection.candidatesConsidered,
-    droppedVideos: selection.droppedVideos,
-    rankedByComments: selection.rankedByComments,
-    estimatedSearchQuotaUnits,
-    estimatedRankingQuotaUnits,
-    searchErrors,
-    run,
-    items: currentScanItems,
-    currentScanOpportunityCount: currentScanItems.length,
-  };
-}
 
 
 function csvEscape(value) {
@@ -281,13 +212,13 @@ async function handle(request, response) {
 
     const importRunMatch = url.pathname.match(/^\/api\/import-runs\/([^/]+)$/);
     if (request.method === 'GET' && importRunMatch) {
-      const result = await store.listOpportunitiesForRun(importRunMatch[1], { limit: url.searchParams.get('limit') || 250 });
+      const result = await store.listOpportunitiesForRun(importRunMatch[1], { limit: url.searchParams.get('limit') || RUN_RESULT_LIMIT });
       if (!result.run) {
         sendJson(response, 404, { error: { code: 'scan_not_found', message: 'Previous scan not found.' } });
         return;
       }
       const run = { ...result.run, title: result.run.title || formatScanTitle({ profileLabel: result.run.metadata?.profileLabel || (result.run.metadata?.scanType === 'manual' ? 'Manual URLs' : 'Previous scan'), daysBack: result.run.metadata?.daysBack || 'manual', maxVideos: result.run.metadata?.maxVideos || result.run.requestedVideoIds?.length || 'manual', commentsFetched: result.run.commentsFetched, startedAt: result.run.startedAt }) };
-      sendJson(response, 200, { run, items: result.items });
+      sendJson(response, 200, { run, items: result.items, summary: buildRunSummary(run, result.items, { total: result.total }) });
       return;
     }
 
@@ -313,7 +244,8 @@ async function handle(request, response) {
       const body = await readJson(request);
       const run = await importYouTubeVideos({ inputs: body.videoUrls || body.inputs || [], options: body, store, youtubeClient, metadata: { scanType: 'manual', profileLabel: 'Manual URLs', maxVideos: body.maxVideos || body.videoUrls?.length || body.inputs?.length || 'manual' } });
       run.title = formatScanTitle({ profileLabel: 'Manual URLs', daysBack: 'manual', maxVideos: run.requestedVideoIds?.length || 'manual', commentsFetched: run.commentsFetched, startedAt: run.startedAt });
-      sendJson(response, run.status === 'failed' ? 400 : 200, { run });
+      const runResult = await store.listOpportunitiesForRun(run.id, { limit: RUN_RESULT_LIMIT });
+      sendJson(response, run.status === 'failed' ? 400 : 200, { run, items: runResult.items, summary: buildRunSummary(run, runResult.items, { total: runResult.total }) });
       return;
     }
 

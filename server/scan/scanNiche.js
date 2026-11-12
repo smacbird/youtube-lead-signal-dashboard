@@ -1,0 +1,82 @@
+import { importYouTubeVideos } from '../import/importService.js';
+import { buildRunSummary } from '../import/runSummary.js';
+import { RUN_RESULT_LIMIT } from '../persistence/store.js';
+import { resolveNicheProfile } from '../youtube/nicheProfiles.js';
+import { selectNicheVideos } from '../youtube/videoRanking.js';
+
+export function formatScanTitle({ profileLabel, daysBack, maxVideos, commentsFetched, startedAt }) {
+  const date = new Date(startedAt || Date.now()).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
+  return `${date} UTC · ${profileLabel || 'Manual scan'} · ${daysBack || 'custom'} days · ${maxVideos || 'manual'} videos · ${commentsFetched || 0} comments`;
+}
+
+function daysAgoIso(days) {
+  const date = new Date(Date.now() - Math.max(1, Number(days) || 14) * 86400000);
+  return date.toISOString();
+}
+
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+export async function scanNiche({ body, store, youtubeClient }) {
+  const profileId = body.profileId || body.nicheProfile || 'affiliate_marketing';
+  const profile = resolveNicheProfile(profileId);
+  const maxVideos = clampNumber(body.maxVideos, 1, 25, 10);
+  const daysBack = clampNumber(body.daysBack, 1, 90, 14);
+  const queries = Array.isArray(body.queries) && body.queries.length
+    ? body.queries.map((value) => String(value).trim()).filter(Boolean).slice(0, 8)
+    : profile.queries;
+  const publishedAfter = daysAgoIso(daysBack);
+  const selection = await selectNicheVideos({ youtubeClient, queries, maxVideos, publishedAfter, order: body.order || 'relevance' });
+  const found = selection.videos;
+  const { searchErrors, estimatedSearchQuotaUnits, estimatedRankingQuotaUnits } = selection;
+
+  const run = await importYouTubeVideos({
+    inputs: found.map((video) => video.url),
+    options: {
+      ...body,
+      maxVideos,
+      maxPagesPerVideo: body.maxPagesPerVideo || body.maxPages || 1,
+      maxCommentsPerRun: body.maxCommentsPerRun || body.maxComments || 250,
+      maxResultsPerPage: body.maxResultsPerPage || body.maxCommentsPerVideo || 50,
+      profileId,
+    },
+    store,
+    youtubeClient,
+    metadata: { scanType: 'niche', profileId, profileLabel: profile.label, queries, daysBack, maxVideos, order: body.order || 'relevance', profileId, profileLabel: profile.label },
+  });
+  run.estimatedQuotaUnits += estimatedSearchQuotaUnits + estimatedRankingQuotaUnits;
+  run.title = formatScanTitle({ profileLabel: profile.label, daysBack, maxVideos, commentsFetched: run.commentsFetched, startedAt: run.startedAt });
+  for (const error of searchErrors) run.errors.push(error);
+  // importYouTubeVideos already saved the run; save the scan-level additions too so Previous Scans
+  // shows the full quota, title and search errors.
+  await store.mutate((state) => {
+    const saved = state.importRuns[run.id];
+    if (saved) Object.assign(saved, { estimatedQuotaUnits: run.estimatedQuotaUnits, title: run.title, errors: run.errors });
+  });
+
+  // Results for THIS scan only, looked up by the run's own opportunity ids (not a store-wide top-N).
+  const runResult = await store.listOpportunitiesForRun(run.id, { limit: RUN_RESULT_LIMIT });
+  const currentScanItems = runResult.items;
+  const summary = buildRunSummary(run, currentScanItems, { total: runResult.total });
+
+  return {
+    profileId,
+    profileLabel: profile.label,
+    queries,
+    daysBack,
+    videosFound: found,
+    candidatesConsidered: selection.candidatesConsidered,
+    droppedVideos: selection.droppedVideos,
+    rankedByComments: selection.rankedByComments,
+    estimatedSearchQuotaUnits,
+    estimatedRankingQuotaUnits,
+    searchErrors,
+    run,
+    items: currentScanItems,
+    currentScanOpportunityCount: currentScanItems.length,
+    summary,
+  };
+}

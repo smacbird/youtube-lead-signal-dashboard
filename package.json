@@ -12,7 +12,8 @@
     "check:import": "node scripts/check-import.mjs",
     "start": "node server/server.js",
     "check:security": "node scripts/check-security.mjs",
-    "check:niche": "node scripts/check-niche-scoring.mjs"
+    "check:niche": "node scripts/check-niche-scoring.mjs",
+    "check:scan": "node scripts/check-scan-results.mjs"
   },
   "dependencies": {
     "@types/react": "latest",

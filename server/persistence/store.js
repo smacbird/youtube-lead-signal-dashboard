@@ -3,6 +3,9 @@ import { dirname, resolve } from 'node:path';
 
 const DEFAULT_STORE_PATH = resolve(process.cwd(), 'data/import-store.json');
 const VALID_STATUSES = new Set(['new', 'reviewed', 'approved', 'rejected', 'replied']);
+// Max opportunities returned for a single scan. Above IMPORT_LIMITS.maxCommentsPerRun (300),
+// so a scan's own results are never truncated.
+export const RUN_RESULT_LIMIT = 1000;
 
 export function createEmptyStore(now = new Date().toISOString()) {
   return {
@@ -67,20 +70,29 @@ export class JsonImportStore {
     return store.importRuns[runId] || null;
   }
 
-  async listOpportunitiesForRun(runId, { limit = 250 } = {}) {
+  // Opportunities for one scan, looked up directly by the scan's own ids, never by a
+  // store-wide top-N (which used to cut off this scan's low scorers when the store was big).
+  async listOpportunitiesForRun(runId, { limit = RUN_RESULT_LIMIT } = {}) {
     const store = await this.load();
     const run = store.importRuns[runId];
-    if (!run) return { run: null, items: [] };
-    const videoIds = new Set(run.requestedVideoIds || []);
-    const items = Object.values(store.opportunities)
-      .filter((opportunity) => {
+    if (!run) return { run: null, items: [], total: 0 };
+    const cap = Math.max(1, Math.min(Number(limit) || RUN_RESULT_LIMIT, RUN_RESULT_LIMIT));
+    let selected;
+    if (Array.isArray(run.opportunityIds)) {
+      selected = run.opportunityIds.map((id) => store.opportunities[id]).filter(Boolean);
+    } else {
+      // Scans saved before opportunityIds existed: fall back to the scan's videos.
+      const videoIds = new Set(run.requestedVideoIds || []);
+      selected = Object.values(store.opportunities).filter((opportunity) => {
         const video = store.videos[opportunity.videoId];
         return videoIds.has(video?.youtubeVideoId || video?.id || opportunity.videoId);
-      })
+      });
+    }
+    const items = selected
       .sort((a, b) => (b.overallScore || 0) - (a.overallScore || 0))
-      .slice(0, Math.max(1, Math.min(Number(limit) || 250, 500)))
+      .slice(0, cap)
       .map((opportunity) => hydrateOpportunity(store, opportunity.id));
-    return { run, items };
+    return { run, items, total: selected.length };
   }
 
   async deleteImportRun(runId, { cascade = true } = {}) {
