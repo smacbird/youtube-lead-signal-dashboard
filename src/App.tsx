@@ -8,13 +8,13 @@ type LocalStatus = 'new' | 'reviewed' | 'approved' | 'rejected' | 'replied';
 type Status = 'all' | LocalStatus;
 type ScoreBand = 'all' | 'urgent' | 'high' | 'medium' | 'low';
 type DraftStyle = 'helpful_consultative' | 'concise_resource' | 'content_follow_up' | 'risk_aware_decline';
-type OpportunityType = 'all' | 'affiliate_publisher_opportunity' | 'consumer_buyer_question' | 'low_fit_comment';
+type OpportunityType = 'all' | 'niche_lead' | 'affiliate_publisher_opportunity' | 'consumer_buyer_question' | 'low_fit_comment';
 type WorkTab = 'hot' | 'buyer' | 'publisher' | 'content' | 'low_fit' | 'stale' | 'done';
 type NicheProfile = 'affiliate_marketing' | 'money_making' | 'work_from_home' | 'side_hustles' | 'biz_opp' | 'ai_tools' | 'traffic_leads' | 'organic_traffic' | 'custom';
 type FreshnessWindow = '7' | '14' | '30' | 'all';
 type WorkflowStep = 'start' | 'import' | 'review' | 'draft';
 type HealthConfig = { ok?: boolean; youtubeApiKeyConfigured?: boolean; aiDraftsConfigured?: boolean; aiDraftProvider?: string };
-type ImportSummary = { status: string; commentsFetched: number; commentsInserted: number; estimatedQuotaUnits: number; totalPersisted: number; freshCount: number; staleCount: number; hotCount: number; publisherCount: number; buyerCount: number; lowFitCount: number; videosFound?: number; bestLeadsFound?: number };
+type ImportSummary = { status: string; commentsFetched: number; commentsInserted: number; estimatedQuotaUnits: number; totalPersisted: number; freshCount: number; staleCount: number; hotCount: number; nicheLeadCount: number; publisherCount: number; buyerCount: number; lowFitCount: number; videosFound?: number; bestLeadsFound?: number };
 type AppSettings = { defaultScanDepth: number; defaultFreshnessDays: number; replyTone: string; enabledNiches: NicheProfile[] };
 type ImportPanelResult = { items: ScoredFixture[]; message: string; summary?: ImportSummary };
 type PreviousScan = { id: string; title?: string; status: string; commentsFetched: number; commentsInserted: number; estimatedQuotaUnits: number; startedAt: string; completedAt?: string; metadata?: Record<string, any> };
@@ -75,6 +75,8 @@ type ScoredFixture = FixtureItem & {
     detectedOfferFit: string[];
     evidenceSnippets: string[];
     scoreDimensions: ScoreDimension[];
+    lowFitReason?: string | null;
+    nicheProfileLabel?: string | null;
   };
 };
 
@@ -97,6 +99,7 @@ const statusHelp: Record<LocalStatus, string> = {
 
 const opportunityTypeLabels: Record<OpportunityType, string> = {
   all: 'All opportunity types',
+  niche_lead: 'Niche lead',
   affiliate_publisher_opportunity: 'Affiliate publisher',
   consumer_buyer_question: 'Consumer buyer question',
   low_fit_comment: 'Low fit',
@@ -136,7 +139,20 @@ const dimensionLabels: Record<string, string> = {
   contentOpportunity: 'Content/tool value',
   replyability: 'Replyability',
   spamComplianceRisk: 'Risk',
+  nicheStartIntent: 'Wants to start',
+  nicheCostTime: 'Cost / time question',
+  nicheLegitimacy: 'Legit / worth it concern',
+  nicheSituation: 'Describes situation',
+  nicheResourceAsk: 'Asks for recommendation',
+  nicheQuestion: 'Question',
+  nicheKeywordFit: 'Niche keyword fit',
+  noiseSignal: 'Noise signal',
 };
+
+// Niche-scan low-fit items carry lowFitReason; legacy low-fit items do not.
+function isNoise(item: ScoredFixture) {
+  return item.score.opportunityType === 'low_fit_comment' && Boolean(item.score.lowFitReason);
+}
 
 const replyStyleLabels: Record<string, string> = {
   helpful_consultative: 'Helpful consultative',
@@ -204,6 +220,7 @@ function buildImportSummary(items: ScoredFixture[], run?: any, extras: Partial<I
     freshCount: items.filter((item) => isFreshForWindow(item, '14')).length,
     staleCount: items.filter((item) => !isFreshForWindow(item, '14')).length,
     hotCount: items.filter((item) => isFreshForWindow(item, '14') && item.score.overallScore >= 45 && item.score.opportunityType !== 'low_fit_comment').length,
+    nicheLeadCount: items.filter((item) => item.score.opportunityType === 'niche_lead').length,
     publisherCount: items.filter((item) => item.score.opportunityType === 'affiliate_publisher_opportunity').length,
     buyerCount: items.filter((item) => item.score.opportunityType === 'consumer_buyer_question').length,
     lowFitCount: items.filter((item) => item.score.opportunityType === 'low_fit_comment').length,
@@ -220,6 +237,12 @@ function workflowStepStatus(step: WorkflowStep, importedCount: number, selectedI
 }
 
 function whyThisMatters(item: ScoredFixture) {
+  if (item.score.opportunityType === 'niche_lead') {
+    return `This looks like a real prospect${item.score.nicheProfileLabel ? ` in ${item.score.nicheProfileLabel}` : ''}: ${item.score.summary}`;
+  }
+  if (isNoise(item)) {
+    return `Low fit: ${item.score.summary} Kept for browsing in the Low fit tab, not for outreach.`;
+  }
   if (item.score.opportunityType === 'affiliate_publisher_opportunity') {
     return 'This looks like a publisher/creator monetization problem: the commenter is asking about affiliate links, websites, commissions, tracking, or how to turn traffic into revenue.';
   }
@@ -234,6 +257,7 @@ function nextBestAction(item: ScoredFixture) {
   if (days !== null && days > 14) return 'Save for research; avoid replying unless still active';
   if (item.score.riskLevel === 'high' || item.score.recommendedAction === 'reject_as_spam') return 'Ignore or use caution';
   if (item.score.overallScore >= 68 && item.score.opportunityType !== 'low_fit_comment') return 'Review and draft reply';
+  if (item.score.opportunityType === 'niche_lead') return 'Review prospect question';
   if (item.score.opportunityType === 'consumer_buyer_question') return 'Save as buyer/content idea';
   if (item.score.opportunityType === 'affiliate_publisher_opportunity') return 'Review publisher problem';
   return 'Ignore for now';
@@ -260,7 +284,7 @@ function csvEscape(value: unknown) {
 
 function exportOpportunitiesCsv(items: ScoredFixture[]) {
   const rows = [
-    ['score', 'type', 'priority', 'risk', 'status', 'age', 'video', 'commenter', 'comment', 'url'],
+    ['score', 'type', 'priority', 'risk', 'status', 'age', 'reason', 'low_fit_reason', 'niche', 'video', 'commenter', 'comment', 'url'],
     ...items.map((item) => [
       item.score.overallScore,
       item.score.opportunityTypeLabel,
@@ -268,6 +292,9 @@ function exportOpportunitiesCsv(items: ScoredFixture[]) {
       item.score.riskLevel,
       item.opportunity.status,
       ageLabel(item),
+      item.score.summary,
+      item.score.lowFitReason || '',
+      item.score.nicheProfileLabel || '',
       item.video.title,
       item.comment.authorDisplayName,
       item.comment.textOriginal,
@@ -519,7 +546,7 @@ function OpportunityCard({ item, localStatus, selected, onSelect }: { item: Scor
         </div>
         <span className={`risk ${item.score.riskLevel}`}>{item.score.riskLevel} risk</span>
       </div>
-      <p>{item.score.summary}</p>
+      <p className={isNoise(item) ? 'low-fit-reason' : undefined}>{isNoise(item) ? `Low fit: ${item.score.summary}` : item.score.summary}</p>
       <blockquote>{item.comment.textOriginal}</blockquote>
       <div className="mini-bars" aria-label="Top score dimensions">
         {topDimensions.map((dimension) => (
@@ -682,7 +709,7 @@ function DetailPanel({
       <WorkflowPanel item={item} localStatus={localStatus} onTransition={onTransition} />
 
       <section className="detail-section">
-        <h3>Why this scored well</h3>
+        <h3>{item.score.opportunityType === 'low_fit_comment' ? 'Why this is low fit' : 'Why this scored well'}</h3>
         <p>{item.score.summary}</p>
         <div className="evidence-list">
           {item.score.evidenceSnippets.length ? item.score.evidenceSnippets.map((snippet) => <span key={snippet}>“{snippet}”</span>) : <span>No strong evidence snippet found.</span>}
@@ -756,6 +783,8 @@ function normaliseImportedOpportunity(raw: any): ScoredFixture {
       detectedOfferFit: raw.detectedOfferFit || [],
       evidenceSnippets: raw.evidenceSnippets || [],
       scoreDimensions: raw.scoreDimensions || [],
+      lowFitReason: raw.lowFitReason || null,
+      nicheProfileLabel: raw.nicheProfileLabel || null,
     },
   };
 }
@@ -873,6 +902,8 @@ function ImportSummaryPanel({ summary, onReview, onShowStale }: { summary?: Impo
         <StatCard label="Fresh leads" value={summary.freshCount} note="last 14 days" />
         <StatCard label="Stale research" value={summary.staleCount} note="older than 14 days" />
         <StatCard label="Best leads found" value={summary.bestLeadsFound ?? summary.hotCount} note="score-qualified" />
+        {summary.nicheLeadCount > 0 && <StatCard label="Niche leads" value={summary.nicheLeadCount} note="prospect questions" />}
+        <StatCard label="Low fit / noise" value={summary.lowFitCount} note="hidden from Best Comments" />
         <StatCard label="Publisher questions" value={summary.publisherCount} note="affiliate/site owner" />
         <StatCard label="Buyer questions" value={summary.buyerCount} note="product decisions" />
       </div>
@@ -1130,11 +1161,11 @@ function App() {
         : workTab === 'publisher'
           ? !done && fresh && item.score.opportunityType === 'affiliate_publisher_opportunity'
           : workTab === 'content'
-            ? !done && fresh && (item.score.detectedOfferFit.length > 0 || item.score.evidenceSnippets.length > 0)
+            ? !done && fresh && !isNoise(item) && (item.score.detectedOfferFit.length > 0 || item.score.evidenceSnippets.length > 0)
             : workTab === 'low_fit'
               ? !done && fresh && item.score.opportunityType === 'low_fit_comment'
               : workTab === 'stale'
-                ? !done && stale
+                ? !done && stale && !isNoise(item)
                 : done;
     return statusMatch && scoreMatch && nicheMatch && typeMatch && tabMatch;
   }), [allItems, localStatuses, status, scoreBand, niche, opportunityType, workTab, freshnessWindow]);
@@ -1153,6 +1184,7 @@ function App() {
   const stats = {
     urgent: allItems.filter((item) => item.score.priority === 'urgent').length,
     consumerQuestions: allItems.filter((item) => item.score.opportunityType === 'consumer_buyer_question').length,
+    nicheLeads: allItems.filter((item) => item.score.opportunityType === 'niche_lead').length,
     safeReplies: allItems.filter((item) => item.score.recommendedAction === 'reply' && item.score.riskLevel !== 'high').length,
     risky: allItems.filter((item) => item.score.riskLevel !== 'low').length,
     approved: allItems.filter((item) => (localStatuses[item.id] ?? item.opportunity.status) === 'approved').length,
@@ -1299,7 +1331,7 @@ function App() {
         setImportedItems(items);
         setImportSummary(summary);
         setDataSource(items.length ? 'imported' : 'imported');
-        setWorkTab(summary?.hotCount ? 'hot' : summary?.staleCount ? 'stale' : 'publisher');
+        setWorkTab(summary?.hotCount || summary?.nicheLeadCount ? 'hot' : summary?.staleCount ? 'stale' : 'publisher');
         if (summary?.staleCount && !summary.hotCount) setFreshnessWindow('all');
         setLocalStatuses((current) => ({ ...Object.fromEntries(items.map((item: ScoredFixture) => [item.id, item.opportunity.status])), ...current }));
         if (items[0]) setSelectedId(items[0].id);
@@ -1357,7 +1389,7 @@ function App() {
             </div>
             <div>
               <span>Type</span>
-              {(['all', 'affiliate_publisher_opportunity', 'consumer_buyer_question', 'low_fit_comment'] as OpportunityType[]).map((value) => (
+              {(['all', 'niche_lead', 'affiliate_publisher_opportunity', 'consumer_buyer_question', 'low_fit_comment'] as OpportunityType[]).map((value) => (
                 <FilterButton key={value} active={opportunityType === value} value={value} label={opportunityTypeLabels[value]} onClick={setOpportunityType} />
               ))}
             </div>

@@ -9,6 +9,8 @@ export const NICHE_PROFILES = {
       'amazon affiliate marketing website',
       'affiliate marketing traffic strategy',
       'affiliate marketing product review SEO',
+      'is affiliate marketing legit for beginners',
+      'affiliate marketing honest results first month',
     ],
   },
   money_making: {
@@ -21,6 +23,8 @@ export const NICHE_PROFILES = {
       'best ways to make money online',
       'passive income ideas for beginners',
       'online income side hustle ideas',
+      'make money online legit or scam',
+      'honest make money online results for beginners',
     ],
   },
   work_from_home: {
@@ -33,6 +37,8 @@ export const NICHE_PROFILES = {
       'business from home for beginners',
       'online business ideas from home',
       'work from home business opportunity',
+      'is a home based business legit',
+      'home business for beginners with no experience',
     ],
   },
   side_hustles: {
@@ -45,6 +51,7 @@ export const NICHE_PROFILES = {
       'side hustles from home',
       'side hustle ideas 2026',
       'side hustles with low startup cost',
+      'side hustles that actually work honest review',
     ],
   },
   biz_opp: {
@@ -57,6 +64,8 @@ export const NICHE_PROFILES = {
       'small business ideas from home',
       'online business opportunity',
       'low cost business ideas',
+      'business opportunity legit or scam review',
+      'honest business opportunity review for beginners',
     ],
   },
   ai_tools: {
@@ -69,6 +78,7 @@ export const NICHE_PROFILES = {
       'AI software tools for beginners',
       'AI tools to make money online',
       'AI automation tools for small business',
+      'are AI tools worth it for beginners honest review',
     ],
   },
   traffic_leads: {
@@ -81,6 +91,7 @@ export const NICHE_PROFILES = {
       'lead generation for beginners',
       'how to get traffic to a website',
       'traffic and leads strategy',
+      'how to get your first leads with no website',
     ],
   },
   organic_traffic: {
@@ -93,6 +104,7 @@ export const NICHE_PROFILES = {
       'SEO traffic for beginners',
       'how to get organic traffic',
       'free traffic methods for affiliate marketing',
+      'how long does SEO take for beginners',
     ],
   },
 };

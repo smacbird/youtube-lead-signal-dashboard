@@ -2,7 +2,8 @@ import { scoreSampleItem } from '../../src/scoring/scoring.js';
 import { clampImportOptions, IMPORT_LIMITS } from './limits.js';
 import { makeReplyDrafts, makeScoringItem, normalizeCommentThreadFromYouTube, normalizeVideoFromYouTube } from './normalize.js';
 import { parseManyYouTubeVideoInputs } from '../youtube/url.js';
-import { nicheScoreBoost } from '../youtube/nicheProfiles.js';
+import { nicheScoreBoost, resolveNicheProfile } from '../youtube/nicheProfiles.js';
+import { scoreNicheLead } from '../scoring/nicheLead.js';
 import {
   createImportRun,
   finishImportRun,
@@ -68,13 +69,48 @@ export async function importYouTubeVideos({ inputs, options = {}, store, youtube
             if (upsert.inserted) run.commentsInserted += 1;
             if (upsert.updated) run.commentsUpdated += 1;
 
+            const profileId = metadata.profileId || options.profileId || null;
+            const opportunityId = `opp_${upsert.record.id}`;
+            if (profileId) {
+              // Niche scans: score the comment as a niche prospect (niche_lead) or noise (low_fit_comment).
+              const profile = resolveNicheProfile(profileId);
+              const niche = scoreNicheLead({
+                text: upsert.record.textOriginal,
+                profileId,
+                authorDisplayName: upsert.record.authorDisplayName,
+                isChannelOwner: upsert.record.isChannelOwner,
+                likeCount: upsert.record.likeCount,
+                replyCount: upsert.record.replyCount,
+              });
+              const { scoreDimensions: nicheDimensions, nicheMatchedKeywords, nicheScoreBoost: nicheBoostValue, nicheSignals, ...nicheScore } = niche;
+              const now = new Date().toISOString();
+              const opportunity = {
+                ...nicheScore,
+                id: opportunityId,
+                commentId: upsert.record.id,
+                videoId: video.id,
+                sourceType: 'youtube_import',
+                scoringModel: 'niche_lead_v1',
+                nicheProfileId: profileId,
+                nicheProfileLabel: profile?.label || metadata.profileLabel || null,
+                nicheLeadCategory: profile?.leadCategory || null,
+                nicheReplyStyle: profile?.replyStyle || null,
+                nicheMatchedKeywords,
+                nicheScoreBoost: nicheBoostValue,
+                nicheSignals,
+                createdAt: now,
+                updatedAt: now,
+              };
+              const drafts = makeReplyDrafts(opportunityId, upsert.record);
+              persistScoredOpportunity(state, opportunity, nicheDimensions, drafts);
+              continue;
+            }
+
             const scoringItem = makeScoringItem(video, upsert.record);
             const score = scoreSampleItem(scoringItem);
-            const profileId = metadata.profileId || options.profileId || null;
             const combinedText = `${video.title || ''} ${upsert.record.textOriginal || ''}`;
             const nicheBoost = profileId ? nicheScoreBoost(profileId, combinedText) : { boost: 0, matched: [], profile: null };
             const boostedScore = Math.min(100, Math.max(0, (score.overallScore || 0) + nicheBoost.boost));
-            const opportunityId = `opp_${upsert.record.id}`;
             const opportunity = {
               ...score,
               overallScore: boostedScore,
@@ -83,6 +119,7 @@ export async function importYouTubeVideos({ inputs, options = {}, store, youtube
               videoId: video.id,
               commentId: upsert.record.id,
               sourceType: 'youtube_import',
+              lowFitReason: null,
               nicheProfileId: profileId,
               nicheProfileLabel: nicheBoost.profile?.label || metadata.profileLabel || null,
               nicheLeadCategory: nicheBoost.profile?.leadCategory || null,

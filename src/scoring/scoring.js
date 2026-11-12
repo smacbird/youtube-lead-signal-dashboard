@@ -424,4 +424,4 @@ export function scoreSampleItem(item, now = '2026-05-07T16:45:00.000Z') {
 }
 
 export function scoreSampleItems(items, now) { return items.map((item) => scoreSampleItem(item, now)); }
-export { DIMENSIONS, OPPORTUNITY_TYPE_LABELS };
+export { DIMENSIONS, OPPORTUNITY_TYPE_LABELS, RISK_KEYWORDS };

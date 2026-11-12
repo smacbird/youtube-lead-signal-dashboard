@@ -5,6 +5,7 @@ import { JsonImportStore, hydrateOpportunity } from './persistence/store.js';
 import { importYouTubeVideos } from './import/importService.js';
 import { YouTubeReadOnlyClient } from './youtube/client.js';
 import { listNicheProfiles, resolveNicheProfile } from './youtube/nicheProfiles.js';
+import { selectNicheVideos } from './youtube/videoRanking.js';
 import { generateReplyDrafts } from './ai/draftGenerator.js';
 import { createAuth } from './auth.js';
 
@@ -96,36 +97,10 @@ async function scanNiche({ body, store, youtubeClient }) {
   const queries = Array.isArray(body.queries) && body.queries.length
     ? body.queries.map((value) => String(value).trim()).filter(Boolean).slice(0, 8)
     : profile.queries;
-  const perQuery = Math.max(1, Math.ceil(maxVideos / Math.max(1, queries.length)));
   const publishedAfter = daysAgoIso(daysBack);
-  const found = [];
-  const seen = new Set();
-  const searchErrors = [];
-  let estimatedSearchQuotaUnits = 0;
-
-  for (const query of queries) {
-    if (found.length >= maxVideos) break;
-    try {
-      estimatedSearchQuotaUnits += 100;
-      const response = await youtubeClient.searchVideos({ query, publishedAfter, maxResults: perQuery, order: body.order || 'relevance' });
-      for (const item of response.items || []) {
-        const id = item?.id?.videoId;
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
-        found.push({
-          id,
-          url: `https://www.youtube.com/watch?v=${id}`,
-          title: item?.snippet?.title || 'YouTube video',
-          channelTitle: item?.snippet?.channelTitle || '',
-          publishedAt: item?.snippet?.publishedAt || '',
-          matchedQuery: query,
-        });
-        if (found.length >= maxVideos) break;
-      }
-    } catch (error) {
-      searchErrors.push({ query, code: error?.code || 'search_error', message: error?.message || 'YouTube search failed.' });
-    }
-  }
+  const selection = await selectNicheVideos({ youtubeClient, queries, maxVideos, publishedAfter, order: body.order || 'relevance' });
+  const found = selection.videos;
+  const { searchErrors, estimatedSearchQuotaUnits, estimatedRankingQuotaUnits } = selection;
 
   const run = await importYouTubeVideos({
     inputs: found.map((video) => video.url),
@@ -141,7 +116,7 @@ async function scanNiche({ body, store, youtubeClient }) {
     youtubeClient,
     metadata: { scanType: 'niche', profileId, profileLabel: profile.label, queries, daysBack, maxVideos, order: body.order || 'relevance', profileId, profileLabel: profile.label },
   });
-  run.estimatedQuotaUnits += estimatedSearchQuotaUnits;
+  run.estimatedQuotaUnits += estimatedSearchQuotaUnits + estimatedRankingQuotaUnits;
   run.title = formatScanTitle({ profileLabel: profile.label, daysBack, maxVideos, commentsFetched: run.commentsFetched, startedAt: run.startedAt });
   for (const error of searchErrors) run.errors.push(error);
 
@@ -155,7 +130,11 @@ async function scanNiche({ body, store, youtubeClient }) {
     queries,
     daysBack,
     videosFound: found,
+    candidatesConsidered: selection.candidatesConsidered,
+    droppedVideos: selection.droppedVideos,
+    rankedByComments: selection.rankedByComments,
     estimatedSearchQuotaUnits,
+    estimatedRankingQuotaUnits,
     searchErrors,
     run,
     items: currentScanItems,
@@ -171,13 +150,15 @@ function csvEscape(value) {
 
 function opportunitiesToCsv(items) {
   const rows = [
-    ['score', 'type', 'priority', 'risk', 'status', 'video', 'commenter', 'comment', 'url', 'niche'],
+    ['score', 'type', 'priority', 'risk', 'status', 'reason', 'low_fit_reason', 'video', 'commenter', 'comment', 'url', 'niche'],
     ...items.map((item) => [
       item.overallScore,
       item.opportunityTypeLabel,
       item.priority,
       item.riskLevel,
       item.status,
+      item.summary,
+      item.lowFitReason || '',
       item.video?.title,
       item.comment?.authorDisplayName,
       item.comment?.textOriginal,

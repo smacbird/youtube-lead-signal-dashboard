@@ -37,6 +37,13 @@ AUTH_ORIGIN=http://127.0.0.1:4174 OWNER_PASSWORD='local-dev-password-at-least-16
 ```
 
 
+## Niche scans: lead scoring and video picks
+
+- Niche scans (imports with a `profileId`) score each comment with `server/scoring/nicheLead.js`: `niche_lead` ("Niche lead") or `low_fit_comment` with a machine `lowFitReason` (`praise_only`, `video_housekeeping`, `self_promotion`, `links_only`, `greeting_only`, `too_short`, `off_topic`, `generic_question`, `channel_owner`) and a plain-English `summary`. Manual URL imports still use `src/scoring/scoring.js` unchanged.
+- Best Comments hides low-fit items; browse them in the **Low fit** tab. CSV exports include the reason.
+- `scanNiche` asks search for up to 2x `maxVideos` candidates (cap 50), makes one batched `videos.list` call (~1 quota unit) for comment counts, drops videos under 10 comments, prefers well-commented videos with beginner / legit / honest titles, and keeps the top `maxVideos`. If `videos.list` fails it keeps search order and records a `video_ranking_failed` entry in `searchErrors`.
+- Tests: `npm run check:niche` (offline; mock YouTube client, no paid calls).
+
 ## Persistent storage on Render
 
 For deployed use, add a Render persistent disk and set:
