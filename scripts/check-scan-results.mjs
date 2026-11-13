@@ -83,6 +83,11 @@ try {
     assert.ok(result.run.estimatedQuotaUnits >= quickEstimate.low && result.run.estimatedQuotaUnits <= quickEstimate.high, 'UI estimate brackets the actual one-lookup scan');
     assert.ok(result.summary.perVideo.every((v) => v.fetched === 20 && v.kept === 20), 'fair share of 20 each');
 
+    // Saved-scan list carries this run's own lead counts (old runs without ids get null).
+    const runs = await store.listImportRuns({ limit: 10 });
+    const listed = runs.find((run) => run.id === result.run.id);
+    assert.deepEqual(listed.leadCounts, { best: 5, maybe: 0, not_fit: 95, done: 0 }, 'saved-scan list shows this run’s lead counts');
+
     // The saved run reloads with the same items (Previous Scans path) and full quota.
     const reloaded = await store.listOpportunitiesForRun(result.run.id);
     assert.equal(reloaded.items.length, 100);

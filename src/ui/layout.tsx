@@ -16,7 +16,7 @@ export function AppHeader({ leadCount, onSettings, settingsOpen, onSignOut, onRe
     <header className="app-header">
       <button type="button" className="header-button menu-toggle" aria-expanded={menuOpen} aria-controls="app-sidebar" onClick={onToggleMenu}>{menuOpen ? 'Close menu' : 'Menu'}</button>
       <div className="brand">
-        <strong>Best Leads System AI</strong>
+        <img className="brand-logo" src="/brand-logo.png" alt="Best Leads System AI" width="640" height="215" />
         <span>Find people on YouTube asking for help, and reply to them yourself.</span>
       </div>
       {leadCount !== null && (

@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { canPrepareReply, isRealAIDraft } from '../../src/scoring/draftSafety.js';
+import { bucketCounts } from '../../src/scoring/leadBuckets.js';
 
 const DEFAULT_STORE_PATH = resolve(process.cwd(), 'data/import-store.json');
 const VALID_STATUSES = new Set(['new', 'reviewed', 'approved', 'rejected', 'replied']);
@@ -62,7 +63,13 @@ export class JsonImportStore {
     const store = await this.load();
     return Object.values(store.importRuns)
       .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))
-      .slice(0, Math.max(1, Math.min(Number(limit) || 25, 100)));
+      .slice(0, Math.max(1, Math.min(Number(limit) || 25, 100)))
+      .map((run) => {
+        // Lead counts only for runs that recorded their own opportunity ids; older runs get null.
+        if (!Array.isArray(run.opportunityIds)) return { ...run, leadCounts: null };
+        const { headline, ...leadCounts } = bucketCounts(run.opportunityIds.map((id) => store.opportunities[id]).filter(Boolean));
+        return { ...run, leadCounts };
+      });
   }
 
 

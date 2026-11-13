@@ -103,7 +103,7 @@ function opportunitiesToCsv(items) {
   return rows.map((row) => row.map(csvEscape).join(',')).join('\n');
 }
 
-const LOGIN_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Best Leads System AI sign in</title></head><body><main><h1>Best Leads System AI</h1><form action="/login" method="post"><label>Owner password <input type="password" name="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form></main></body></html>`;
+const LOGIN_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Best Leads System AI sign in</title><link rel="icon" type="image/png" href="/favicon.png"></head><body><main><h1><img src="/brand-logo.png" width="320" alt="Best Leads System AI"></h1><form action="/login" method="post"><label>Owner password <input type="password" name="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form></main></body></html>`;
 
 async function handle(request, response) {
   const url = new URL(request.url, 'http://localhost');
@@ -123,6 +123,18 @@ async function handle(request, response) {
     }
     if (!auth.sameHost(request)) {
       sendJson(response, 403, { error: { code: 'invalid_host', message: 'Forbidden.' } });
+      return;
+    }
+    if (request.method === 'GET' && (url.pathname === '/brand-logo.png' || url.pathname === '/favicon.png')) {
+      // Brand images only (needed by the sign-in page); everything else stays behind the login.
+      const file = url.pathname === '/favicon.png' ? 'favicon.png' : 'logo.png';
+      try {
+        const body = await readFile(join(STATIC_ROOT, file));
+        response.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=3600' });
+        response.end(body);
+      } catch {
+        sendJson(response, 404, { error: { code: 'not_found', message: 'File not found.' } });
+      }
       return;
     }
     if (request.method === 'GET' && url.pathname === '/login') {

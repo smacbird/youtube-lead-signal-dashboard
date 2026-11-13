@@ -1001,3 +1001,75 @@ html, body { overflow-x: hidden; }
 @media (max-width: 560px) { .app-header { grid-template-columns: auto 1fr; } .header-leads { grid-column: 1 / -1; } }
 @media (max-width: 900px) { .app-sidebar { top: 96px; } }
 @media (max-width: 560px) { .app-sidebar { top: 132px; } }
+
+/* Round 6: header alignment, shared modal, readable saved-scan cards, no sidebar squeeze. */
+/* Header: brand on the left, buttons pinned to the right edge whether or not the lead pill shows.
+   (The old 3-column grid let the buttons fall into the middle column when the pill was absent.) */
+.app-header { display: flex !important; flex-wrap: wrap; align-items: center; gap: 14px 20px; box-sizing: border-box; width: 100%; }
+.app-header .brand { flex: 1 1 320px; min-width: 0; }
+.app-header .header-leads { flex: 0 0 auto; margin: 0; }
+.app-header .header-menu { flex: 0 0 auto; margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+/* Header and the sidebar+main row share the same outer width and right edge. */
+.dashboard-shell { box-sizing: border-box; }
+.app-body { box-sizing: border-box; width: 100%; }
+.app-main { max-width: none; }
+@media (max-width: 900px) {
+  .app-header .menu-toggle { order: -1; }
+  .app-header .brand { flex-basis: calc(100% - 120px); }
+  .app-header .header-menu { margin-left: 0; justify-content: flex-start; width: 100%; }
+}
+
+/* Sidebar contents never exceed the column. */
+.app-sidebar, .app-sidebar * { box-sizing: border-box; }
+.app-sidebar { min-width: 0; }
+.sidebar-list > li { min-width: 0; }
+.sidebar-item { min-width: 0; }
+.sidebar-item > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.sidebar-panel { min-width: 0; overflow: hidden; }
+.sidebar-options { display: grid; gap: 14px; }
+.sidebar-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sidebar-field > span { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 900; }
+.sidebar-field select, .sidebar-field input, .sidebar-field textarea { width: 100%; max-width: 100%; min-width: 0; margin: 0; border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px; background: rgba(0, 0, 0, 0.25); color: inherit; font: inherit; text-transform: none; letter-spacing: normal; }
+.sidebar-field small { color: var(--muted); font-size: 0.82rem; line-height: 1.45; overflow-wrap: anywhere; }
+.sidebar-field.inline-number { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.sidebar-field.inline-number input { width: 80px; flex: none; }
+
+/* Modal. */
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px 16px; background: rgba(5, 5, 4, 0.72); overflow-y: auto; }
+.modal-dialog { box-sizing: border-box; width: min(560px, 100%); max-height: 88vh; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 22px; background: var(--panel-strong); box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6); }
+.modal-dialog.wide { width: min(720px, 100%); }
+.modal-dialog:focus { outline: none; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px 12px; border-bottom: 1px solid var(--line); }
+.modal-header h2 { margin: 0; font-size: 1.35rem; }
+.modal-body { padding: 16px 20px 20px; overflow-y: auto; min-width: 0; }
+.modal-body *, .modal-body { box-sizing: border-box; }
+.modal-actions { margin-top: 0; opacity: 1; }
+.modal-body textarea { min-height: 150px; }
+@media (max-width: 560px) {
+  .modal-backdrop { padding: 0; align-items: stretch; }
+  .modal-dialog, .modal-dialog.wide { width: 100%; max-height: 100vh; min-height: 100vh; border-radius: 0; }
+}
+
+/* Saved-scan cards: full-width title that wraps normally, then meta, then actions. */
+.saved-scan-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.saved-scan-card { display: block; min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: rgba(248, 241, 223, 0.04); }
+.scan-title { margin: 0 0 6px; font-weight: 700; line-height: 1.4; white-space: normal; overflow-wrap: break-word; word-break: normal; min-width: 0; }
+.saved-scan-meta, .saved-scan-leads { margin: 0 0 4px; color: var(--muted); font-size: 0.88rem; overflow-wrap: break-word; }
+.saved-scan-leads { color: var(--mint); }
+.saved-scan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.saved-scan-actions .workflow-button { opacity: 1; }
+/* Any other place a scan title shows wraps the same way. */
+.result-card .workflow-note, .previous-scan-title, .previous-scan-row { min-width: 0; overflow-wrap: break-word; white-space: normal; }
+.saved-scan-actions .workflow-button { border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; color: #f8f1df; background: rgba(248, 241, 223, 0.06); font: inherit; cursor: pointer; }
+.saved-scan-actions .workflow-button.safe { background: rgba(139, 225, 180, 0.18); border-color: rgba(139, 225, 180, 0.5); font-weight: 700; }
+.saved-scan-actions .workflow-button.danger { background: rgba(255, 125, 116, 0.14); border-color: rgba(255, 125, 116, 0.45); }
+.saved-scan-actions .workflow-button:disabled { opacity: 0.5; cursor: wait; }
+/* 100vw includes the scrollbar, which made the shell overflow; size from the parent instead. */
+.dashboard-shell { width: min(1560px, calc(100% - 32px)); }
+@media (max-width: 680px) { .dashboard-shell { width: calc(100% - 20px); } }
+
+/* Brand logo replaces the header title text */
+.brand-logo { display: block; height: 76px; width: auto; max-width: 100%; border-radius: 14px; border: 1px solid var(--line); background: #010d2b; }
+.brand span { margin-top: 6px; display: block; }
+@media (max-width: 900px) { .brand-logo { height: 60px; } }
+@media (max-width: 560px) { .brand-logo { height: 48px; } }

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiJson } from './api';
 import { buildScanSummary, normaliseImportedOpportunity } from './helpers';
+import { Modal } from './modal';
+import { scanCardMeta, scanCardTitle, scanLeadLine, sortScansNewestFirst } from './scanFormat.js';
 import { MAX_COMMENTS, MIN_COMMENTS, VIDEO_AGE_CHOICES, manualImportBody, parseVideoLinks, presetFor, withCommentCap, withDaysBack, withManualPages, type ScanOptions } from './scanOptions.js';
 import type { ScanResult } from './scanStep';
 import type { PreviousScan, ScoredFixture } from './types';
@@ -72,17 +74,19 @@ export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, opt
   const loadPrevious = (scan: PreviousScan) => run(async () => {
     const body = await apiJson(`/api/import-runs/${encodeURIComponent(scan.id)}`);
     const items = (body.items || []).map(normaliseImportedOpportunity);
-    onResult({ items, summary: buildScanSummary('previous', items, body), nicheScan: body.run?.metadata?.scanType === 'niche', runId: body.run?.id });
-    setMessage(`Loaded: ${body.run?.title || scan.id}`);
+    onOpenPanel(null);
     onMobileClose();
+    setMessage(`Loaded: ${scanCardTitle(scan)}`);
+    onResult({ items, summary: buildScanSummary('previous', items, body), nicheScan: body.run?.metadata?.scanType === 'niche', runId: body.run?.id });
   }, 'Loading that scan.');
 
   const loadEverything = () => run(async () => {
     const body = await apiJson('/api/opportunities?limit=500');
     const items = (body.items || []).map(normaliseImportedOpportunity);
-    onResult({ items, summary: buildScanSummary('saved', items, {}), nicheScan: items.some((item: ScoredFixture) => item.score.opportunityType === 'niche_lead') });
-    setMessage(`Loaded your ${items.length} highest-scoring saved comments from all scans.`);
+    onOpenPanel(null);
     onMobileClose();
+    setMessage(`Loaded your ${items.length} highest-scoring saved comments from all scans.`);
+    onResult({ items, summary: buildScanSummary('saved', items, {}), nicheScan: items.some((item: ScoredFixture) => item.score.opportunityType === 'niche_lead') });
   }, 'Loading all saved comments.');
 
   const deletePrevious = (scan: PreviousScan) => {
@@ -97,21 +101,28 @@ export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, opt
   const importUrls = () => run(async () => {
     const body = await apiJson('/api/import/youtube', { method: 'POST', body: JSON.stringify(manualImportBody(options, videoUrls)) });
     const items = (body.items || []).map(normaliseImportedOpportunity);
-    onResult({ items, summary: buildScanSummary('manual', items, body), nicheScan: false, runId: body.run?.id });
-    setMessage('Done. The comments from those videos are in Step 3.');
+    onOpenPanel(null);
     onMobileClose();
+    setMessage('Done. The comments from those videos are in Step 3.');
+    onResult({ items, summary: buildScanSummary('manual', items, body), nicheScan: false, runId: body.run?.id });
   }, 'Reading comments from the videos you pasted.');
 
   function toggle(id: SidebarPanel) {
     const next = openPanel === id ? null : id;
     onOpenPanel(next);
-    if (next === 'saved' && previousScans === null) listPrevious();
+    // Refresh each time the dialog opens so new scans appear; on phones close the drop-down menu
+    // so it never sits behind the dialog.
+    if (next === 'saved') listPrevious();
+    if (next === 'saved' || next === 'advanced') onMobileClose();
   }
 
   const savedCount = previousScans?.length || 0;
   const linkCount = parseVideoLinks(videoUrls).length;
 
+  const sortedScans = sortScansNewestFirst(previousScans || []);
+
   return (
+    <>
     <nav ref={navRef} id="app-sidebar" className={mobileOpen ? 'app-sidebar open' : 'app-sidebar'} aria-label="Tools">
       <ul className="sidebar-list">
         {ITEMS.map((entry) => {
@@ -121,7 +132,7 @@ export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, opt
                 <button type="button" className="sidebar-item" onClick={() => { onExport(); onMobileClose(); }} disabled={exportDisabled}
                   title={exportDisabled ? 'Run or load a scan first' : 'Download the comments shown in Step 3'}
                   aria-describedby={exportDisabled ? 'export-hint' : undefined}>
-                  {entry.label}
+                  <span>{entry.label}</span>
                 </button>
                 {exportDisabled && <small id="export-hint" className="sidebar-hint">Run or load a scan first</small>}
               </li>
@@ -129,77 +140,85 @@ export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, opt
           }
           const id = entry.id;
           const open = openPanel === id;
+          const isModal = id === 'saved' || id === 'advanced';
           return (
             <li key={id}>
-              <button type="button" className={open ? 'sidebar-item selected' : 'sidebar-item'} aria-expanded={open} aria-controls={`sidebar-panel-${id}`} onClick={() => toggle(id)}>
+              <button type="button" className={open ? 'sidebar-item selected' : 'sidebar-item'}
+                aria-expanded={isModal ? undefined : open} aria-haspopup={isModal ? 'dialog' : undefined}
+                aria-controls={isModal ? undefined : `sidebar-panel-${id}`} onClick={() => toggle(id)}>
                 <span>{entry.label}</span>
                 {id === 'saved' && savedCount > 0 && <span className="sidebar-count" aria-label={`${savedCount} saved scans`}>{savedCount}</span>}
-                <span className="sidebar-caret" aria-hidden="true">{open ? '\u2212' : '+'}</span>
+                <span className="sidebar-caret" aria-hidden="true">{isModal ? '›' : open ? '−' : '+'}</span>
               </button>
-              {open && (
-                <div id={`sidebar-panel-${id}`} className="sidebar-panel" role="region" aria-label={entry.label}>
-                  {id === 'saved' && (
-                    <>
-                      <div className="approval-hooks">
-                        <button type="button" className="workflow-button" disabled={loading} onClick={listPrevious}>Refresh list</button>
-                        <button type="button" className="workflow-button" disabled={loading} onClick={loadEverything}>Show all saved comments</button>
-                      </div>
-                      {previousScans && previousScans.length > 0 ? (
-                        <ul className="previous-scans-list" aria-label="Saved scans">
-                          {previousScans.map((scan) => (
-                            <li key={scan.id} className="previous-scan-row">
-                              <button className="previous-scan-title" type="button" onClick={() => loadPrevious(scan)}>{scan.title || scan.id}</button>
-                              <div className="previous-scan-meta">
-                                <small>{scan.commentsFetched} comments · {scan.estimatedQuotaUnits || 0} units</small>
-                                <button className="delete-scan-button" type="button" onClick={() => deletePrevious(scan)} aria-label={`Delete saved scan ${scan.title || scan.id}`}>Delete</button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : <p className="workflow-note">{previousScans ? 'No saved scans yet.' : 'Loading…'}</p>}
-                    </>
-                  )}
-                  {id === 'advanced' && (
-                    <>
-                      <label className="stacked-label">
-                        <span>YouTube video links, one per line (up to 10)</span>
-                        <textarea value={videoUrls} onChange={(event) => setVideoUrls(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
-                      </label>
-                      <label className="manual-page-option">Comment pages per video
-                        <input type="number" min={1} max={3} value={options.manualPages} onChange={(event) => onOptionsChange(withManualPages(options, Number(event.target.value)))} />
-                      </label>
-                      <small className="workflow-note">Reads up to {options.commentCap} comments in total (set in More options). These videos use the older buyer and site-owner scoring, not the niche lead scoring.</small>
-                      <div className="approval-hooks">
-                        <button type="button" className="workflow-button safe" disabled={loading || !linkCount} onClick={importUrls}>
-                          Read comments from {linkCount ? `${Math.min(10, linkCount)} video${Math.min(10, linkCount) === 1 ? '' : 's'}` : 'these videos'}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                  {id === 'options' && (
-                    <div className="options-grid sidebar-options">
-                      <label>
-                        <span>Video age</span>
-                        <select value={options.daysBack} onChange={(event) => onOptionsChange(withDaysBack(options, Number(event.target.value)))}>
-                          {VIDEO_AGE_CHOICES.map((days) => <option key={days} value={days}>Videos from the last {days} days{days === 30 ? ' (recommended)' : ''}</option>)}
-                        </select>
-                        <small>Videos need a few days to collect comments, so 30 days usually finds the most people.</small>
-                      </label>
-                      <label>
-                        <span>Most comments to read</span>
-                        <input type="number" min={MIN_COMMENTS} max={MAX_COMMENTS} value={options.commentCap}
-                          onChange={(event) => onOptionsChange(withCommentCap(options, Number(event.target.value)))} />
-                        <small>Shared evenly across the videos. {MAX_COMMENTS} is the most one scan can read. Changing the scan size resets this to {presetFor(options).comments}.</small>
-                      </label>
-                    </div>
-                  )}
+              {open && id === 'options' && (
+                <div id="sidebar-panel-options" className="sidebar-panel" role="region" aria-label={entry.label}>
+                  <div className="sidebar-options">
+                    <label className="sidebar-field">
+                      <span>Video age</span>
+                      <select value={options.daysBack} onChange={(event) => onOptionsChange(withDaysBack(options, Number(event.target.value)))}>
+                        {VIDEO_AGE_CHOICES.map((days) => <option key={days} value={days}>Last {days} days{days === 30 ? ' (recommended)' : ''}</option>)}
+                      </select>
+                      <small>Videos need a few days to collect comments, so 30 days usually finds the most people.</small>
+                    </label>
+                    <label className="sidebar-field">
+                      <span>Most comments to read</span>
+                      <input type="number" min={MIN_COMMENTS} max={MAX_COMMENTS} value={options.commentCap}
+                        onChange={(event) => onOptionsChange(withCommentCap(options, Number(event.target.value)))} />
+                      <small>Shared evenly across the videos. {MAX_COMMENTS} is the most one scan can read. Changing the scan size resets this to {presetFor(options).comments}.</small>
+                    </label>
+                  </div>
                 </div>
               )}
             </li>
           );
         })}
       </ul>
-      <p className="status-line sidebar-status" role="status" aria-live="polite">{message}</p>
+      {message && !openPanel && <p className="status-line sidebar-status" role="status" aria-live="polite">{message}</p>}
     </nav>
+
+    <Modal open={openPanel === 'saved'} title="Saved scans" onClose={() => onOpenPanel(null)} wide>
+      <div className="approval-hooks modal-actions">
+        <button type="button" className="workflow-button" disabled={loading} onClick={listPrevious}>Refresh list</button>
+        <button type="button" className="workflow-button" disabled={loading} onClick={loadEverything}>Show all saved comments</button>
+      </div>
+      <p className="status-line" role="status" aria-live="polite">{message}</p>
+      {sortedScans.length > 0 ? (
+        <ul className="saved-scan-list" aria-label="Saved scans, newest first">
+          {sortedScans.map((scan) => {
+            const leadLine = scanLeadLine(scan);
+            return (
+              <li key={scan.id} className="saved-scan-card">
+                <p className="scan-title">{scanCardTitle(scan)}</p>
+                <p className="saved-scan-meta">{scanCardMeta(scan)}</p>
+                {leadLine && <p className="saved-scan-leads">{leadLine}</p>}
+                <div className="saved-scan-actions">
+                  <button type="button" className="workflow-button safe" disabled={loading} onClick={() => loadPrevious(scan)}>Open this scan</button>
+                  <button type="button" className="workflow-button danger" disabled={loading} onClick={() => deletePrevious(scan)} aria-label={`Delete saved scan ${scanCardTitle(scan)}`}>Delete</button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : <p className="workflow-note">{previousScans ? 'No saved scans yet.' : 'Loading…'}</p>}
+    </Modal>
+
+    <Modal open={openPanel === 'advanced'} title="Scan specific videos" onClose={() => onOpenPanel(null)}>
+      <label className="stacked-label sidebar-field">
+        <span>YouTube video links, one per line (up to 10)</span>
+        <textarea data-autofocus value={videoUrls} onChange={(event) => setVideoUrls(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+      </label>
+      <label className="sidebar-field inline-number">
+        <span>Comment pages per video</span>
+        <input type="number" min={1} max={3} value={options.manualPages} onChange={(event) => onOptionsChange(withManualPages(options, Number(event.target.value)))} />
+      </label>
+      <p className="workflow-note">Reads up to {options.commentCap} comments in total (set in More options). These videos use the older buyer and site-owner scoring, not the niche lead scoring.</p>
+      <div className="approval-hooks modal-actions">
+        <button type="button" className="workflow-button safe" disabled={loading || !linkCount} onClick={importUrls}>
+          Read comments from {linkCount ? `${Math.min(10, linkCount)} video${Math.min(10, linkCount) === 1 ? '' : 's'}` : 'these videos'}
+        </button>
+      </div>
+      <p className="status-line" role="status" aria-live="polite">{message}</p>
+    </Modal>
+    </>
   );
 }

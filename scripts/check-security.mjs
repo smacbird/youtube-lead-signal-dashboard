@@ -91,6 +91,12 @@ try {
     }
     const loginPage = await fetch(`${origin}/login`);
     assert.equal(loginPage.headers.get('referrer-policy'), 'same-origin', 'browsers must still send a real Origin on form posts');
+    for (const brand of ['/brand-logo.png', '/favicon.png']) {
+      const image = await fetch(`${origin}${brand}`);
+      assert.equal(image.status, 200, `${brand} is public so the sign-in page can show it`);
+      assert.equal(image.headers.get('content-type'), 'image/png');
+    }
+    assert.equal((await fetch(`${origin}/logo.png`, { redirect: 'manual' })).status, 303, 'other files stay behind the login');
     assert.equal((await fetch(`${origin}/api/health`)).status, 200);
     assert.equal((await fetch(`${origin}/login`)).status, 200);
     const noOrigin = await fetch(`${origin}/login`, { method: 'POST', body: new URLSearchParams({ password: PASSWORD }), redirect: 'manual' });
