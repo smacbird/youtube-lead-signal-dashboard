@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 
 export type StepState = 'done' | 'current' | 'upcoming';
 
@@ -11,14 +11,33 @@ export const STEPS = [
 
 const stateText: Record<StepState, string> = { done: 'Finished', current: 'You are here', upcoming: 'Next' };
 
+export const HEADER_TAGLINE = 'Find People Already Looking for Answers on YouTube and Help Them Find Solutions';
+
 export function AppHeader({ leadCount, onSettings, settingsOpen, onSignOut, onReset, menuOpen, onToggleMenu }: { leadCount: number | null; onSettings: () => void; settingsOpen: boolean; onSignOut: () => void; onReset: () => void; menuOpen: boolean; onToggleMenu: () => void }) {
+  const headerRef = useRef<HTMLElement | null>(null);
+
+  // Publish the real header height so the sidebar, the phone menu and scroll offsets always clear it.
+  useEffect(() => {
+    const node = headerRef.current;
+    if (!node) return undefined;
+    const publish = () => document.documentElement.style.setProperty('--header-h', `${Math.ceil(node.getBoundingClientRect().height)}px`);
+    publish();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', publish);
+      return () => window.removeEventListener('resize', publish);
+    }
+    const observer = new ResizeObserver(publish);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <header className="app-header">
+    <header className="app-header" ref={headerRef}>
       <button type="button" className="header-button menu-toggle" aria-expanded={menuOpen} aria-controls="app-sidebar" onClick={onToggleMenu}>{menuOpen ? 'Close menu' : 'Menu'}</button>
       <div className="brand">
         <img className="brand-logo" src="/brand-logo.png" alt="Best Leads System AI" width="640" height="215" />
-        <span>Find people on YouTube asking for help, and reply to them yourself.</span>
       </div>
+      <p className="header-tagline">{HEADER_TAGLINE}</p>
       {leadCount !== null && (
         <p className="header-leads" aria-live="polite"><strong>{leadCount}</strong> lead{leadCount === 1 ? '' : 's'} found</p>
       )}
