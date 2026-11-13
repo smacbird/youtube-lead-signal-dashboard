@@ -96,7 +96,10 @@ try {
       assert.equal(image.status, 200, `${brand} is public so the sign-in page can show it`);
       assert.equal(image.headers.get('content-type'), 'image/png');
     }
-    assert.equal((await fetch(`${origin}/logo.png`, { redirect: 'manual' })).status, 303, 'other files stay behind the login');
+    const loginCss = await fetch(`${origin}/login.css`);
+    assert.equal(loginCss.status, 200, 'login stylesheet is public so sign-in can be styled');
+    assert.match(loginCss.headers.get('content-type'), /text\/css/);
+    assert.equal((await fetch(`${origin}/login.css.map`, { redirect: 'manual' })).status, 303, 'other files stay behind the login');
     assert.equal((await fetch(`${origin}/api/health`)).status, 200);
     assert.equal((await fetch(`${origin}/login`)).status, 200);
     const noOrigin = await fetch(`${origin}/login`, { method: 'POST', body: new URLSearchParams({ password: PASSWORD }), redirect: 'manual' });

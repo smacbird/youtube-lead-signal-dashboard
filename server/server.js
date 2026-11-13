@@ -103,7 +103,7 @@ function opportunitiesToCsv(items) {
   return rows.map((row) => row.map(csvEscape).join(',')).join('\n');
 }
 
-const LOGIN_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Best Leads System AI sign in</title><link rel="icon" type="image/png" href="/favicon.png"></head><body><main><h1><img src="/brand-logo.png" width="320" alt="Best Leads System AI"></h1><form action="/login" method="post"><label>Owner password <input type="password" name="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form></main></body></html>`;
+const LOGIN_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#071024"><title>Best Leads System AI sign in</title><link rel="icon" type="image/png" href="/favicon.png"><link rel="stylesheet" href="/login.css"></head><body><main class="login-card"><img class="login-logo" src="/brand-logo.png" width="320" height="128" alt="Best Leads System AI"><div class="login-copy"><p class="login-kicker">PRIVATE WORKSPACE</p><h1>Welcome back</h1><p class="login-description">Sign in to review your YouTube leads and reply ideas.</p></div><form action="/login" method="post"><label for="owner-password">Owner password</label><input id="owner-password" type="password" name="password" required autocomplete="current-password" autofocus><button type="submit">Sign in securely <span aria-hidden="true">→</span></button></form><p class="login-footnote">Your scans and reply drafts are private to your account.</p></main></body></html>`;
 
 async function handle(request, response) {
   const url = new URL(request.url, 'http://localhost');
@@ -125,12 +125,13 @@ async function handle(request, response) {
       sendJson(response, 403, { error: { code: 'invalid_host', message: 'Forbidden.' } });
       return;
     }
-    if (request.method === 'GET' && (url.pathname === '/brand-logo.png' || url.pathname === '/favicon.png')) {
-      // Brand images only (needed by the sign-in page); everything else stays behind the login.
-      const file = url.pathname === '/favicon.png' ? 'favicon.png' : 'logo.png';
+    if (request.method === 'GET' && ['/brand-logo.png', '/favicon.png', '/login.css'].includes(url.pathname)) {
+      // Only sign-in branding assets are public; everything else stays behind the login.
+      const file = { '/brand-logo.png': 'logo.png', '/favicon.png': 'favicon.png', '/login.css': 'login.css' }[url.pathname];
       try {
         const body = await readFile(join(STATIC_ROOT, file));
-        response.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=3600' });
+        const contentType = url.pathname === '/login.css' ? 'text/css; charset=utf-8' : 'image/png';
+        response.writeHead(200, { 'content-type': contentType, 'cache-control': 'public, max-age=3600' });
         response.end(body);
       } catch {
         sendJson(response, 404, { error: { code: 'not_found', message: 'File not found.' } });
