@@ -155,6 +155,42 @@ try {
     assert.equal(summary.skipped, 1, 'duplicate is accounted for as skipped');
   }
 
+  // Exact run membership: overlapping imports of one video share old comments, while
+  // new comments belong only to the second run. Deleting one never removes the other.
+  {
+    const store = new JsonImportStore({ filePath: join(tempDir, 'overlap-store.json') });
+    const videoId = vid(51);
+    const first = await importYouTubeVideos({ inputs: [videoId], options: { maxCommentsPerRun: 20 }, store, youtubeClient: mockClient({ [videoId]: 10 }) });
+    const second = await importYouTubeVideos({ inputs: [videoId], options: { maxCommentsPerRun: 20 }, store, youtubeClient: mockClient({ [videoId]: 15 }) });
+    assert.deepEqual([first.opportunityIds.length, first.commentIds.length, first.videoIds.length], [10, 10, 1]);
+    assert.deepEqual([second.opportunityIds.length, second.commentIds.length, second.videoIds.length], [15, 15, 1]);
+    const removedFirst = await store.deleteImportRun(first.id);
+    assert.equal(removedFirst.deleted, true);
+    assert.equal(removedFirst.removed.opportunities, 0, 'the second run still references all first-run comments');
+    assert.equal((await store.listOpportunitiesForRun(second.id)).items.length, 15);
+    const removedSecond = await store.deleteImportRun(second.id);
+    assert.deepEqual([removedSecond.removed.opportunities, removedSecond.removed.comments, removedSecond.removed.videos], [15, 15, 1]);
+    assert.equal((await store.listOpportunities()).length, 0);
+  }
+
+  // Legacy runs cannot be deleted by guessing all records on a video; if an exact new run
+  // shares a legacy video's id, preserve its data and explicitly report incomplete cleanup.
+  {
+    const store = new JsonImportStore({ filePath: join(tempDir, 'legacy-store.json') });
+    const videoId = vid(61);
+    const current = await importYouTubeVideos({ inputs: [videoId], store, youtubeClient: mockClient({ [videoId]: 3 }) });
+    await store.mutate((data) => { data.importRuns.legacy = { id: 'legacy', requestedVideoIds: [videoId], startedAt: '2025-01-01' }; });
+    const legacy = await store.deleteImportRun('legacy');
+    assert.equal(legacy.deleted, false);
+    assert.equal(legacy.code, 'legacy_run_membership_unknown');
+    assert.equal((await store.getImportRun('legacy')).id, 'legacy');
+    const removedCurrent = await store.deleteImportRun(current.id);
+    assert.equal(removedCurrent.deleted, true);
+    assert.equal(removedCurrent.incomplete, true);
+    assert.equal(removedCurrent.removed.opportunities, 0, 'legacy overlap leaves shared records intact');
+    assert.equal((await store.listOpportunities()).length, 3);
+  }
+
   // Shared bucket rule.
   assert.equal(leadBucket({ opportunityType: 'niche_lead', overallScore: 50 }), 'maybe');
   assert.equal(leadBucket({ opportunityType: 'niche_lead', overallScore: 85, leadFit: 'best' }), 'best');

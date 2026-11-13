@@ -1,14 +1,16 @@
 import React from 'react';
-import type { AppSettings } from './types';
+import type { AppSettings, HealthConfig } from './types';
+import { keyWarnings } from './keyWarnings';
 import { SCAN_PRESETS } from './scanPresets.js';
+import { NICHES } from './helpers';
 
-export function SettingsPanel({ settings, onChange, onClose }: { settings: AppSettings; onChange: (next: AppSettings) => void; onClose: () => void }) {
+export function SettingsPanel({ settings, status, health, onChange, onClose }: { settings: AppSettings; status: string; health: HealthConfig; onChange: (next: AppSettings) => void; onClose: () => void }) {
   return (
     <section id="settings-panel" className="settings-panel" aria-labelledby="settings-title">
       <div className="section-heading-row">
         <div>
           <h2 id="settings-title">Settings</h2>
-          <p>These set the starting choices for your next scan in this browser. They never change or delete saved scans.</p>
+          <p>These choices are saved on this service and used for your next visit. They never change or delete saved scans.</p>
         </div>
         <button type="button" className="header-button" onClick={onClose}>Close</button>
       </div>
@@ -32,6 +34,26 @@ export function SettingsPanel({ settings, onChange, onClose }: { settings: AppSe
           <span>Reply tone</span>
           <input value={settings.replyTone} onChange={(event) => onChange({ ...settings, replyTone: event.target.value })} />
         </label>
+      </div>
+      <fieldset className="settings-niches">
+        <legend>Niches shown in Step 1</legend>
+        {NICHES.map((niche) => {
+          const checked = settings.enabledNiches.includes(niche.id);
+          return <label key={niche.id}>
+            <input type="checkbox" checked={checked} disabled={checked && settings.enabledNiches.length === 1}
+              onChange={() => onChange({ ...settings, enabledNiches: checked
+                ? settings.enabledNiches.filter((id) => id !== niche.id)
+                : [...settings.enabledNiches, niche.id] })} />
+            <span>{niche.label}</span>
+          </label>;
+        })}
+      </fieldset>
+      <p role="status" aria-live="polite" className="workflow-note">{status}</p>
+      <div className="key-health-notes">
+        <h3>Last-known API status</h3>
+        <p className="workflow-note">Based on actual requests, not an active key test. A restart resets this status to unknown.</p>
+        {keyWarnings(health).length ? <ul>{keyWarnings(health).map((warning) => <li key={warning}>{warning}</li>)}</ul>
+          : <p className="workflow-note">No API key warnings from recent requests.</p>}
       </div>
     </section>
   );

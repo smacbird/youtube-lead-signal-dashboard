@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { canPrepareReply, isRealAIDraft } from '../../src/scoring/draftSafety.js';
+import { canPrepareReply, isSafeReplyDraft } from '../../src/scoring/draftSafety.js';
 import { bucketCounts } from '../../src/scoring/leadBuckets.js';
+import { settingsFromStore, validateSettings } from '../settings.js';
 
 const DEFAULT_STORE_PATH = resolve(process.cwd(), 'data/import-store.json');
 const VALID_STATUSES = new Set(['new', 'reviewed', 'approved', 'rejected', 'replied']);
@@ -20,12 +21,14 @@ export function createEmptyStore(now = new Date().toISOString()) {
     replyDrafts: {},
     statusHistory: {},
     importRuns: {},
+    settings: null,
   };
 }
 
 export class JsonImportStore {
   constructor({ filePath = process.env.IMPORT_STORE_PATH || DEFAULT_STORE_PATH } = {}) {
     this.filePath = filePath;
+    this.pending = Promise.resolve();
   }
 
   async load() {
@@ -44,11 +47,27 @@ export class JsonImportStore {
     return store;
   }
 
-  async mutate(mutator) {
+  mutate(mutator) {
+    // One server process owns this file. Serialize writes so a debounced settings save
+    // cannot replace a concurrent scan or generated draft from a stale snapshot.
+    const work = this.pending.then(async () => {
+      const store = await this.load();
+      const result = await mutator(store);
+      await this.save(store);
+      return result;
+    });
+    this.pending = work.catch(() => {});
+    return work;
+  }
+
+  async getSettings() {
     const store = await this.load();
-    const result = await mutator(store);
-    await this.save(store);
-    return result;
+    return settingsFromStore(store.settings);
+  }
+
+  async updateSettings(input) {
+    const valid = validateSettings(input);
+    return this.mutate((store) => { store.settings = valid; return settingsFromStore(store.settings); });
   }
 
   async listOpportunities({ limit = 100 } = {}) {
@@ -106,66 +125,55 @@ export class JsonImportStore {
   async deleteImportRun(runId, { cascade = true } = {}) {
     return this.mutate((store) => {
       const run = store.importRuns[runId];
-      const existed = Boolean(run);
-      if (!run) return { deleted: false, removed: { videos: 0, comments: 0, opportunities: 0, drafts: 0, scoreDimensions: 0, statusHistory: 0 } };
-
       const removed = { videos: 0, comments: 0, opportunities: 0, drafts: 0, scoreDimensions: 0, statusHistory: 0 };
-      if (cascade) {
-        const sharedVideoIds = new Set(Object.values(store.importRuns || {})
-          .filter((other) => other.id !== runId)
-          .flatMap((other) => other.requestedVideoIds || []));
-        const youtubeVideoIds = new Set((run.requestedVideoIds || []).filter((id) => !sharedVideoIds.has(id)));
-        const internalVideoIds = new Set();
-        for (const [videoId, video] of Object.entries(store.videos || {})) {
-          if (youtubeVideoIds.has(video.youtubeVideoId || video.id || videoId)) internalVideoIds.add(videoId);
-        }
+      if (!run) return { deleted: false, removed };
 
-        const opportunityIds = new Set();
-        const commentIds = new Set();
-        for (const [opportunityId, opportunity] of Object.entries(store.opportunities || {})) {
-          if (internalVideoIds.has(opportunity.videoId)) {
-            opportunityIds.add(opportunityId);
-            if (opportunity.commentId) commentIds.add(opportunity.commentId);
-          }
-        }
-
-        for (const draftId of Object.keys(store.replyDrafts || {})) {
-          if (opportunityIds.has(store.replyDrafts[draftId]?.opportunityId)) {
-            delete store.replyDrafts[draftId];
-            removed.drafts += 1;
-          }
-        }
-        for (const dimensionId of Object.keys(store.scoreDimensions || {})) {
-          if (opportunityIds.has(dimensionId)) {
-            delete store.scoreDimensions[dimensionId];
-            removed.scoreDimensions += 1;
-          }
-        }
-        for (const historyId of Object.keys(store.statusHistory || {})) {
-          if (opportunityIds.has(store.statusHistory[historyId]?.opportunityId)) {
-            delete store.statusHistory[historyId];
-            removed.statusHistory += 1;
-          }
-        }
-        for (const opportunityId of opportunityIds) {
-          delete store.opportunities[opportunityId];
-          removed.opportunities += 1;
-        }
-        for (const commentId of commentIds) {
-          delete store.comments[commentId];
-          removed.comments += 1;
-        }
-        for (const videoId of internalVideoIds) {
-          const stillReferenced = Object.values(store.opportunities || {}).some((opportunity) => opportunity.videoId === videoId);
-          if (!stillReferenced) {
-            delete store.videos[videoId];
-            removed.videos += 1;
-          }
-        }
+      // The old format records searched video ids but not which comments were fetched.
+      // It is unsafe to infer ownership from a whole video, even if no newer run shares it.
+      if (![run.opportunityIds, run.commentIds, run.videoIds].every(Array.isArray)) {
+        return { deleted: false, code: 'legacy_run_membership_unknown', message: 'This older scan cannot be deleted safely: exact comment membership was not recorded.', removed };
       }
+      if (!cascade) { delete store.importRuns[runId]; return { deleted: true, removed }; }
 
+      const otherRuns = Object.values(store.importRuns).filter((other) => other.id !== runId);
+      const otherOpportunities = new Set(otherRuns.flatMap((other) => other.opportunityIds || []));
+      const otherComments = new Set(otherRuns.flatMap((other) => other.commentIds || []));
+      const otherVideos = new Set(otherRuns.flatMap((other) => other.videoIds || []));
+      const legacyVideoIds = new Set(otherRuns.filter((other) => ![other.opportunityIds, other.commentIds, other.videoIds].every(Array.isArray))
+        .flatMap((other) => other.requestedVideoIds || []));
+      const protectedVideos = new Set(Object.entries(store.videos).filter(([id, video]) =>
+        legacyVideoIds.has(video.youtubeVideoId || id) || legacyVideoIds.has(id)).map(([id]) => id));
+
+      for (const id of new Set(run.opportunityIds)) {
+        const opportunity = store.opportunities[id];
+        if (!opportunity || otherOpportunities.has(id) || protectedVideos.has(opportunity.videoId)) continue;
+        for (const [draftId, draft] of Object.entries(store.replyDrafts)) {
+          if (draft.opportunityId === id) { delete store.replyDrafts[draftId]; removed.drafts += 1; }
+        }
+        if (store.scoreDimensions[id]) { delete store.scoreDimensions[id]; removed.scoreDimensions += 1; }
+        for (const [historyId, history] of Object.entries(store.statusHistory)) {
+          if (history.opportunityId === id) { delete store.statusHistory[historyId]; removed.statusHistory += 1; }
+        }
+        delete store.opportunities[id];
+        removed.opportunities += 1;
+      }
+      for (const id of new Set(run.commentIds)) {
+        const comment = store.comments[id];
+        if (!comment || otherComments.has(id) || protectedVideos.has(comment.videoId)) continue;
+        if (Object.values(store.opportunities).some((opportunity) => opportunity.commentId === id)) continue;
+        delete store.comments[id];
+        removed.comments += 1;
+      }
+      for (const id of new Set(run.videoIds)) {
+        if (!store.videos[id] || otherVideos.has(id) || protectedVideos.has(id)) continue;
+        if (Object.values(store.comments).some((comment) => comment.videoId === id)
+          || Object.values(store.opportunities).some((opportunity) => opportunity.videoId === id)) continue;
+        delete store.videos[id];
+        removed.videos += 1;
+      }
+      const incomplete = run.videoIds.some((id) => protectedVideos.has(id));
       delete store.importRuns[runId];
-      return { deleted: existed, removed };
+      return { deleted: true, incomplete, warning: incomplete ? 'Some records were retained because an older scan may reference them.' : null, removed };
     });
   }
 
@@ -188,7 +196,7 @@ export class JsonImportStore {
       const opportunity = store.opportunities[opportunityId];
       if (!opportunity) throw new Error(`opportunity_not_found:${opportunityId}`);
       const draft = store.replyDrafts[draftId];
-      if (!isRealAIDraft(draft, opportunityId)) throw new Error(`draft_not_found:${draftId}`);
+      if (!isSafeReplyDraft(draft, opportunityId)) throw new Error(`draft_not_found:${draftId}`);
       opportunity.selectedDraftId = draftId;
       opportunity.updatedAt = new Date().toISOString();
       return hydrateOpportunity(store, opportunityId);
@@ -261,6 +269,10 @@ export function createImportRun(store, requestedInputs, parsed, metadata = {}) {
     status: 'running',
     requestedInputs,
     requestedVideoIds: parsed.videoIds,
+    // Exact internal ids touched by this run. Deletion never infers membership from a video.
+    opportunityIds: [],
+    commentIds: [],
+    videoIds: [],
     rejectedInputs: parsed.rejected,
     cappedInputs: parsed.capped,
     pagesFetched: 0,

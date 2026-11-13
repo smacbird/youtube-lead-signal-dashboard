@@ -8,13 +8,17 @@ import { importYouTubeVideos } from './import/importService.js';
 import { YouTubeReadOnlyClient } from './youtube/client.js';
 import { listNicheProfiles } from './youtube/nicheProfiles.js';
 import { generateReplyDrafts } from './ai/draftGenerator.js';
-import { canPrepareReply, isRealAIDraft } from '../src/scoring/draftSafety.js';
+import { canPrepareReply, safeDraftsForOpportunity } from '../src/scoring/draftSafety.js';
 import { createAuth } from './auth.js';
+import { lastKnownKeyStatus } from './keyHealth.js';
 
 const PORT = Number(process.env.PORT || 4174);
 const store = new JsonImportStore();
 const youtubeClient = new YouTubeReadOnlyClient();
 const auth = createAuth();
+// OAuth web-client ID is public metadata, never an access token or client secret.
+const googleClientId = /^[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(process.env.GOOGLE_CLIENT_ID || '')
+  ? process.env.GOOGLE_CLIENT_ID : null;
 const draftInflight = new Map(); // coalesce duplicate requests for one opportunity
 let draftQueue = Promise.resolve(); // serialize paid calls across opportunities
 const STATIC_ROOT = join(process.cwd(), 'dist');
@@ -110,7 +114,9 @@ async function handle(request, response) {
   response.setHeader('cache-control', 'no-store');
   response.setHeader('x-content-type-options', 'nosniff');
   response.setHeader('referrer-policy', 'same-origin');
-  response.setHeader('content-security-policy', "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+  response.setHeader('content-security-policy', "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+    + (googleClientId ? "; script-src 'self' https://accounts.google.com/gsi/client; connect-src 'self' https://accounts.google.com/gsi/ https://sheets.googleapis.com/v4/spreadsheets; frame-src https://accounts.google.com/gsi/; style-src 'self' https://accounts.google.com/gsi/style" : ''));
+  if (googleClientId) response.setHeader('cross-origin-opener-policy', 'same-origin-allow-popups');
 
   try {
     if (request.method === 'GET' && url.pathname === '/api/health') {
@@ -185,7 +191,11 @@ async function handle(request, response) {
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/config') {
-      sendJson(response, 200, { ok: true, youtubeApiKeyConfigured: Boolean(process.env.YOUTUBE_API_KEY), aiDraftsConfigured: Boolean(process.env.OPENAI_API_KEY), aiDraftProvider: process.env.OPENAI_API_KEY ? 'openai' : 'server_fallback' });
+      sendJson(response, 200, { ok: true, youtubeApiKeyConfigured: Boolean(process.env.YOUTUBE_API_KEY), aiDraftsConfigured: Boolean(process.env.OPENAI_API_KEY), aiDraftProvider: process.env.OPENAI_API_KEY ? 'openai' : 'none', googleClientId, apiHealth: lastKnownKeyStatus() });
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/settings') {
+      sendJson(response, 200, { settings: await store.getSettings() });
       return;
     }
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
@@ -193,6 +203,11 @@ async function handle(request, response) {
         sendJson(response, 403, { error: { code: 'csrf_failed', message: 'Forbidden.' } });
         return;
       }
+    }
+    if (request.method === 'PUT' && url.pathname === '/api/settings') {
+      const body = await readJson(request);
+      sendJson(response, 200, { settings: await store.updateSettings(body) });
+      return;
     }
     if (request.method === 'POST' && url.pathname === '/logout') {
       auth.logout(response, session);
@@ -240,7 +255,7 @@ async function handle(request, response) {
 
     if (request.method === 'DELETE' && importRunMatch) {
       const result = await store.deleteImportRun(importRunMatch[1]);
-      sendJson(response, 200, result);
+      sendJson(response, result.code === 'legacy_run_membership_unknown' ? 409 : 200, result);
       return;
     }
 
@@ -307,12 +322,13 @@ async function handle(request, response) {
           error.status = 400;
           throw error;
         }
-        const cached = opportunity.replyDrafts.filter((draft) => isRealAIDraft(draft, id));
+        const cached = safeDraftsForOpportunity(opportunity.replyDrafts, id);
         if (canPrepareReply(cached, id) && !body.force) return { item: opportunity, provider: 'cached' };
         const generated = await generateReplyDrafts(opportunity);
         for (const draft of generated.drafts) data.replyDrafts[draft.id] = draft;
         const answer = generated.drafts.find((draft) => draft.style === 'ai_short_helpful')
-          || generated.drafts.find((draft) => draft.style === 'ai_consultative') || generated.drafts[0];
+          || generated.drafts.find((draft) => draft.style === 'ai_consultative')
+          || generated.drafts.find((draft) => draft.style === 'fallback_short') || generated.drafts[0];
         data.opportunities[id].selectedDraftId = answer.id;
         data.opportunities[id].updatedAt = new Date().toISOString();
         return { item: hydrateOpportunity(data, id), provider: generated.provider };

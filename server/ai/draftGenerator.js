@@ -1,4 +1,6 @@
-import { canPrepareReply } from '../../src/scoring/draftSafety.js';
+import { canPrepareReply, isSafeReplyDraft } from '../../src/scoring/draftSafety.js';
+import { safeFallbackDraft } from './fallbackReplies.js';
+import { recordKeyOutcome } from '../keyHealth.js';
 
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
@@ -45,8 +47,14 @@ function parseDraftJson(text) {
   return JSON.parse(match[0]);
 }
 
+function fallbackOrThrow(opportunity, message) {
+  const draft = safeFallbackDraft(opportunity);
+  if (isSafeReplyDraft(draft, opportunity.id)) return { provider: 'safe_fallback', drafts: [draft] };
+  throw new Error(message || 'No safe automatic reply fits this comment. Reply ideas need the OpenAI key.');
+}
+
 export async function generateReplyDrafts(opportunity) {
-  if (!process.env.OPENAI_API_KEY) throw new Error('Reply ideas need the OpenAI key.');
+  if (!process.env.OPENAI_API_KEY) return fallbackOrThrow(opportunity);
 
   const prompt = buildDraftPrompt(opportunity);
 
@@ -64,18 +72,25 @@ export async function generateReplyDrafts(opportunity) {
         { role: 'user', content: prompt },
       ],
     }),
-  }).catch(() => { throw new Error('Reply ideas need the OpenAI key or a working OpenAI connection. Try again later.'); });
+  }).catch(() => null);
 
-  if (!response.ok) throw new Error('Reply ideas need the OpenAI key or a working OpenAI connection. Try again later.');
+  if (!response) return fallbackOrThrow(opportunity, 'Reply ideas need a working OpenAI connection. No safe fallback fits this comment.');
+  if (!response.ok) {
+    if (response.status === 401) recordKeyOutcome('openai', 'invalid_key');
+    return fallbackOrThrow(opportunity, 'OpenAI could not write a reply, and no safe fallback fits this comment.');
+  }
+  recordKeyOutcome('openai', 'ok');
 
-  const body = await response.json();
+  let body;
+  try { body = await response.json(); }
+  catch { return fallbackOrThrow(opportunity, 'OpenAI returned an unreadable reply.'); }
   const content = body.choices?.[0]?.message?.content || '';
   const now = new Date().toISOString();
   const base = `ai_${opportunity.id}_${now.replace(/[-:.TZ]/g, '')}`;
   let parsed;
   try { parsed = parseDraftJson(content); }
-  catch { throw new Error('No usable reply ideas were returned. Try again later.'); }
-  if (!Array.isArray(parsed)) throw new Error('No usable reply ideas were returned. Try again later.');
+  catch { return fallbackOrThrow(opportunity, 'No usable reply ideas were returned.'); }
+  if (!Array.isArray(parsed)) return fallbackOrThrow(opportunity, 'No usable reply ideas were returned.');
   const drafts = parsed.slice(0, 3).map((draft, index) => ({
     id: `${base}_${index + 1}`,
     opportunityId: opportunity.id,
@@ -87,6 +102,6 @@ export async function generateReplyDrafts(opportunity) {
   }));
 
   if (!drafts.length || drafts.some((draft) => !draft.body) || !canPrepareReply(drafts, opportunity.id))
-    throw new Error('No usable reply ideas were returned. Try again later.');
+    return fallbackOrThrow(opportunity, 'No usable reply ideas were returned.');
   return { provider: 'openai', drafts };
 }

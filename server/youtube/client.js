@@ -1,3 +1,5 @@
+import { classifyYouTubeKeyFailure, recordKeyOutcome } from '../keyHealth.js';
+
 const API_ROOT = 'https://www.googleapis.com/youtube/v3';
 const READ_ONLY_METHODS = new Set(['videos', 'commentThreads', 'search']);
 
@@ -29,12 +31,21 @@ async function readJson(response) {
 }
 
 function youtubeErrorFromResponse(response, body) {
-  const reason = body?.error?.errors?.[0]?.reason || body?.error?.status || 'youtube_request_failed';
-  const message = body?.error?.message || `YouTube API request failed with HTTP ${response.status}.`;
-  return sanitizedError(reason, message, response.status, {
-    httpStatus: response.status,
-    youtubeReason: reason,
-  });
+  const raw = String(body?.error?.errors?.[0]?.reason || body?.error?.status || '');
+  const known = new Map([
+    ['keyinvalid', 'keyInvalid'], ['invalidkey', 'keyInvalid'],
+    ['quotaexceeded', 'quotaExceeded'], ['dailylimitexceeded', 'quotaExceeded'],
+    ['ratelimitexceeded', 'quotaExceeded'], ['commentsdisabled', 'commentsDisabled'],
+    ['videonotfound', 'videoNotFound'],
+  ]);
+  const reason = known.get(raw.toLowerCase()) || (response.status === 429 ? 'quotaExceeded' : 'youtube_request_failed');
+  const failure = classifyYouTubeKeyFailure(response.status, reason);
+  if (failure) recordKeyOutcome('youtube', failure);
+  const message = failure === 'invalid_key' ? 'YouTube access was rejected. Check the configured API key.'
+    : failure === 'quota_exceeded' ? 'YouTube quota or rate limit was reached.'
+    : reason === 'commentsDisabled' ? 'Comments are disabled for this video.'
+    : `YouTube request failed (HTTP ${response.status}).`;
+  return sanitizedError(reason, message, response.status, { httpStatus: response.status });
 }
 
 function isRetryableStatus(status) {
@@ -68,9 +79,11 @@ export class YouTubeReadOnlyClient {
     url.searchParams.set('key', apiKey);
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
-      const response = await this.fetchImpl(url, { method: 'GET', headers: { accept: 'application/json' } });
+      let response;
+      try { response = await this.fetchImpl(url, { method: 'GET', headers: { accept: 'application/json' } }); }
+      catch { throw sanitizedError('youtube_network_error', 'YouTube connection failed.', 503); }
       const body = await readJson(response);
-      if (response.ok) return body;
+      if (response.ok) { recordKeyOutcome('youtube', 'ok'); return body; }
       if (!isRetryableStatus(response.status) || attempt === this.maxRetries) throw youtubeErrorFromResponse(response, body);
       await sleep(250 * (attempt + 1));
     }

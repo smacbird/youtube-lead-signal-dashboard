@@ -9,14 +9,15 @@ import type { PreviousScan, ScoredFixture } from './types';
 
 export type SidebarPanel = 'saved' | 'advanced' | 'options';
 
-const ITEMS: Array<{ id: SidebarPanel | 'export'; label: string }> = [
+const ITEMS: Array<{ id: SidebarPanel | 'export' | 'sheets'; label: string }> = [
   { id: 'saved', label: 'Open a saved scan' },
   { id: 'advanced', label: 'Advanced: scan specific videos' },
   { id: 'export', label: 'Export CSV' },
+  { id: 'sheets', label: 'Export to Google Sheets' },
   { id: 'options', label: 'More options' },
 ];
 
-export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, options, onOptionsChange, onResult, onExport, exportDisabled }: {
+export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, options, onOptionsChange, onResult, onExport, onExportSheets, sheetsBusy, onHealthChange, exportDisabled }: {
   openPanel: SidebarPanel | null;
   onOpenPanel: (panel: SidebarPanel | null) => void;
   mobileOpen: boolean;
@@ -25,6 +26,9 @@ export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, opt
   onOptionsChange: (next: ScanOptions) => void;
   onResult: (result: ScanResult) => void;
   onExport: () => void;
+  onExportSheets: () => void;
+  sheetsBusy: boolean;
+  onHealthChange: () => void;
   exportDisabled: boolean;
 }) {
   const [previousScans, setPreviousScans] = useState<PreviousScan[] | null>(null);
@@ -62,7 +66,7 @@ export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, opt
     setMessage(busy);
     try { await task(); } catch (error) {
       setMessage(`That did not work: ${error instanceof Error ? error.message : 'unknown error'}`);
-    } finally { setLoading(false); }
+    } finally { setLoading(false); onHealthChange(); }
   }
 
   const listPrevious = () => run(async () => {
@@ -92,9 +96,10 @@ export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, opt
   const deletePrevious = (scan: PreviousScan) => {
     if (!window.confirm('Delete this saved scan? Its comments, drafts and review history will be removed. This cannot be undone.')) return;
     run(async () => {
-      await apiJson(`/api/import-runs/${encodeURIComponent(scan.id)}`, { method: 'DELETE' });
+      const result = await apiJson(`/api/import-runs/${encodeURIComponent(scan.id)}`, { method: 'DELETE' });
+      if (!result.deleted) throw new Error(result.message || 'Scan was not deleted.');
       setPreviousScans((current) => (current || []).filter((item) => item.id !== scan.id));
-      setMessage('Scan deleted.');
+      setMessage(result.warning ? `Scan removed. ${result.warning}` : 'Scan deleted.');
     }, 'Deleting that scan.');
   };
 
@@ -126,6 +131,11 @@ export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, opt
     <nav ref={navRef} id="app-sidebar" className={mobileOpen ? 'app-sidebar open' : 'app-sidebar'} aria-label="Tools">
       <ul className="sidebar-list">
         {ITEMS.map((entry) => {
+          if (entry.id === 'sheets') return <li key={entry.id}>
+            <button type="button" className="sidebar-item" onClick={onExportSheets} disabled={sheetsBusy}>
+              <span>{sheetsBusy ? 'Preparing Google Sheets...' : entry.label}</span>
+            </button>
+          </li>;
           if (entry.id === 'export') {
             return (
               <li key={entry.id}>

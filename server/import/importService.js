@@ -115,7 +115,7 @@ export async function importYouTubeVideos({ inputs, options = {}, store, youtube
 
   return store.mutate(async (state) => {
     const run = createImportRun(state, requestedInputs, parsed, metadata);
-    Object.assign(run, { commentsDuplicate: 0, commentsCapped: 0, opportunitiesKept: 0, opportunityIds: [], videoResults: [] });
+    Object.assign(run, { commentsDuplicate: 0, commentsCapped: 0, opportunitiesKept: 0, videoResults: [] });
     if (!parsed.videoIds.length) {
       recordImportError(run, 'no_valid_video_ids', 'No supported YouTube video URLs or IDs were provided.');
       return finishImportRun(run, 'failed');
@@ -162,16 +162,21 @@ export async function importYouTubeVideos({ inputs, options = {}, store, youtube
         }
         seenThisRun.add(comment.id);
         const upsert = upsertImportedComment(state, comment);
+        run.commentIds.push(comment.id);
         if (upsert.inserted) run.commentsInserted += 1;
         if (upsert.updated) { run.commentsUpdated += 1; result.alreadySaved += 1; }
         const opportunityId = scoreAndPersist({ state, video, record: upsert.record, metadata, options });
-        keptIds.add(opportunityId);
+        if (!keptIds.has(opportunityId)) {
+          keptIds.add(opportunityId);
+          run.opportunityIds.push(opportunityId);
+        }
         result.kept += 1;
       };
 
       for (let index = 0; index < scanVideos.length; index += 1) {
         const { videoId, normalizedVideo } = scanVideos[index];
         const video = upsertImportedVideo(state, normalizedVideo);
+        run.videoIds.push(video.id);
         const remainingBudget = Math.max(0, cappedOptions.maxCommentsPerRun - run.commentsFetched);
         const share = Math.ceil(remainingBudget / (scanVideos.length - index));
         const result = makeVideoResult(videoId, normalizedVideo, { budget: share });
@@ -267,7 +272,6 @@ export async function importYouTubeVideos({ inputs, options = {}, store, youtube
           if (!progress) break;
         }
       }
-      run.opportunityIds = [...keptIds];
       run.opportunitiesKept = keptIds.size;
 
       const hasErrors = run.errors.length > 0;

@@ -85,6 +85,7 @@ export const replyStyleLabels: Record<string, string> = {
   ai_short_helpful: 'Short answer',
   ai_consultative: 'Detailed answer',
   ai_content_angle: 'Video idea',
+  fallback_short: 'Suggested answer',
 };
 
 // Niche-scan "not a fit" items carry lowFitReason; older items do not.
@@ -280,6 +281,7 @@ export function normaliseImportedOpportunity(raw: any): ScoredFixture {
       scoreDimensions: raw.scoreDimensions || [],
       lowFitReason: raw.lowFitReason || null,
       nicheProfileLabel: raw.nicheProfileLabel || null,
+      nicheProfileId: raw.nicheProfileId || null,
     },
   };
 }

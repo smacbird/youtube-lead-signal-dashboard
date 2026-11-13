@@ -11,10 +11,10 @@
     "dev:server": "node server/server.js",
     "check:import": "node scripts/check-import.mjs",
     "start": "node server/server.js",
-    "check:security": "node scripts/check-security.mjs",
+    "check:security": "node scripts/check-security.mjs && node scripts/check-key-health.mjs && node scripts/check-sheets.mjs",
     "check:niche": "node scripts/check-niche-scoring.mjs",
     "check:scan": "node scripts/check-scan-results.mjs && node scripts/check-scan-options.mjs && node scripts/check-scan-format.mjs",
-    "check:drafts": "node scripts/check-draft-prompt.mjs && node scripts/check-draft-selection.mjs"
+    "check:drafts": "node scripts/check-draft-prompt.mjs && node scripts/check-draft-selection.mjs && node scripts/check-fallback-replies.mjs"
   },
   "dependencies": {
     "@types/react": "latest",

@@ -13,6 +13,8 @@ import { ReplyPanel } from './ui/replyStep';
 import { AgeFilter, EmptyList, LeadCard, ReviewTabs } from './ui/reviewStep';
 import { ScanPanel, ScanResultCard, type ScanResult } from './ui/scanStep';
 import { SettingsPanel } from './ui/settings';
+import { keyWarnings } from './ui/keyWarnings';
+import { exportFilteredToGoogleSheets } from './ui/googleSheets';
 import { Sidebar, type SidebarPanel } from './ui/sidebar';
 import { defaultScanOptions, type ScanOptions } from './ui/scanOptions.js';
 import type { AppSettings, FixtureItem, FreshnessWindow, HealthConfig, LocalStatus, NicheProfile, OpportunityType, ReviewTab, ScanSummary, ScoreBand, ScoredFixture, Status } from './ui/types';
@@ -36,11 +38,11 @@ function scrollToStep(n: number) {
   window.setTimeout(() => el?.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true }), 300);
 }
 
-function App() {
+function App({ initialSettings, initialHealth }: { initialSettings: AppSettings; initialHealth: HealthConfig }) {
   const [items, setItems] = useState<ScoredFixture[]>([]);
   const [summary, setSummary] = useState<ScanSummary | undefined>();
   const [isDemo, setIsDemo] = useState(false);
-  const [niche, setNiche] = useState<NicheProfile>('work_from_home');
+  const [niche, setNiche] = useState<NicheProfile>(initialSettings.enabledNiches.includes('work_from_home') ? 'work_from_home' : initialSettings.enabledNiches[0]);
   const [nicheChosen, setNicheChosen] = useState(false);
   const [expandedStep, setExpandedStep] = useState(1);
   const [tab, setTab] = useState<ReviewTab>('best');
@@ -52,10 +54,15 @@ function App() {
   const [firstLeadId, setFirstLeadId] = useState<string | undefined>();
   const [statuses, setStatuses] = useState<Record<string, LocalStatus>>({});
   const [selectedDrafts, setSelectedDrafts] = useState<Record<string, string>>({});
-  const [healthConfig, setHealthConfig] = useState<HealthConfig>({});
+  const [healthConfig, setHealthConfig] = useState<HealthConfig>(initialHealth);
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState<AppSettings>({ defaultScanDepth: 5, defaultFreshnessDays: 30, replyTone: 'Helpful, concise, practical', enabledNiches: ALL_NICHES });
-  const [scanOptions, setScanOptions] = useState<ScanOptions>(() => defaultScanOptions({ defaultScanDepth: 5, defaultFreshnessDays: 30 }));
+  const [settings, setSettings] = useState<AppSettings>(initialSettings);
+  const [settingsStatus, setSettingsStatus] = useState('Saved on this service.');
+  const [sheetStatus, setSheetStatus] = useState<{ message: string; url?: string } | null>(null);
+  const [sheetBusy, setSheetBusy] = useState(false);
+  const skipInitialSettingsSave = useRef(true);
+  const settingsSaveVersion = useRef(0);
+  const [scanOptions, setScanOptions] = useState<ScanOptions>(() => defaultScanOptions(initialSettings));
   const [sidebarPanel, setSidebarPanel] = useState<SidebarPanel | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const replyRef = useRef<HTMLDivElement | null>(null);
@@ -65,8 +72,19 @@ function App() {
   const [draftFeedback, setDraftFeedback] = useState<{ id: string; writing: boolean; error?: string } | null>(null);
 
   useEffect(() => {
-    apiJson('/api/config').then(setHealthConfig).catch((error) => console.warn('Configuration check failed safely', error));
-  }, []);
+    if (skipInitialSettingsSave.current) { skipInitialSettingsSave.current = false; return; }
+    const version = ++settingsSaveVersion.current;
+    setSettingsStatus('Saving settings...');
+    const timer = window.setTimeout(async () => {
+      try {
+        await apiJson('/api/settings', { method: 'PUT', body: JSON.stringify(settings) });
+        if (version === settingsSaveVersion.current) setSettingsStatus('Settings saved across visits.');
+      } catch (error) {
+        if (version === settingsSaveVersion.current) setSettingsStatus(`Settings were not saved: ${error instanceof Error ? error.message : 'unknown error'}`);
+      }
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [settings]);
 
   // Restore this tab's last saved run on reload; no YouTube call is made.
   useEffect(() => {
@@ -121,6 +139,8 @@ function App() {
   const selected = pickSelectedItem(visible, selectedId);
   selectedIdLive.current = selected?.id;
   const nicheLeadCount = items.filter((item) => item.score.opportunityType === 'niche_lead').length;
+  const warnings = keyWarnings(healthConfig);
+  const refreshHealth = () => { apiJson('/api/config').then(setHealthConfig).catch(() => {}); };
 
   useEffect(() => { if (!tabs.includes(tab)) setTab('best'); }, [tabs, tab]);
 
@@ -234,11 +254,14 @@ function App() {
   }
 
   async function fetchDraftFor(id: string, force: boolean) {
-    const body = await apiJson(`/api/opportunities/${encodeURIComponent(id)}/ai-drafts`, { method: 'POST', body: JSON.stringify({ force }) });
+    let body;
+    try { body = await apiJson(`/api/opportunities/${encodeURIComponent(id)}/ai-drafts`, { method: 'POST', body: JSON.stringify({ force }) }); }
+    finally { refreshHealth(); }
     const updated = normaliseImportedOpportunity(body.item);
     const safe = safeDraftsForOpportunity(updated.opportunity.replyDrafts, id);
     const answer = safe.find((draft) => draft.style === 'ai_short_helpful')
-      || safe.find((draft) => draft.style === 'ai_consultative');
+      || safe.find((draft) => draft.style === 'ai_consultative')
+      || safe.find((draft) => draft.style === 'fallback_short');
     setItems((current) => current.map((item) => item.id === id ? updated : item));
     if (answer) setSelectedDrafts((current) => ({ ...current, [id]: answer.id }));
   }
@@ -250,6 +273,18 @@ function App() {
     const job = draftQueue.current.then(() => fetchDraftFor(id, true));
     draftQueue.current = job.catch(() => {});
     await job;
+  }
+
+  async function handleSheetsExport() {
+    if (sheetBusy) return;
+    setSheetBusy(true);
+    setSheetStatus({ message: 'Preparing Google Sheets export...' });
+    try {
+      const result = await exportFilteredToGoogleSheets(visible, statuses, healthConfig.googleClientId);
+      setSheetStatus({ message: result.message, url: 'url' in result ? result.url : undefined });
+    } catch (error) {
+      setSheetStatus({ message: error instanceof Error ? error.message : 'Google Sheets export did not finish. CSV export still works.' });
+    } finally { setSheetBusy(false); }
   }
 
   async function signOut() {
@@ -271,10 +306,13 @@ function App() {
         menuOpen={sidebarOpen}
         onToggleMenu={() => setSidebarOpen((value) => !value)}
       />
-      {showSettings && <SettingsPanel settings={settings} onChange={(next) => {
+      {warnings.length > 0 && <aside className="key-health-banner" role="alert" aria-label="API key warnings">{warnings.join(' ')}</aside>}
+      {sheetStatus && <div className="sheets-status" role="status" aria-live="polite">{sheetStatus.message}{sheetStatus.url && <a href={sheetStatus.url} target="_blank" rel="noopener noreferrer">Open the spreadsheet</a>}</div>}
+      {showSettings && <SettingsPanel settings={settings} status={settingsStatus} health={healthConfig} onChange={(next) => {
         setSettings(next);
         // Settings set the starting choices; apply them to the next scan straight away.
         setScanOptions((current) => ({ ...defaultScanOptions(next), manualPages: current.manualPages }));
+        if (!next.enabledNiches.includes(niche)) setNiche(next.enabledNiches[0]);
       }} onClose={() => setShowSettings(false)} />}
 
       <div className="app-body">
@@ -285,8 +323,11 @@ function App() {
         onMobileClose={() => setSidebarOpen(false)}
         options={scanOptions}
         onOptionsChange={setScanOptions}
+        onHealthChange={refreshHealth}
         onResult={applyResult}
         onExport={() => exportOpportunitiesCsv(visible.length ? visible : items, statuses)}
+        onExportSheets={handleSheetsExport}
+        sheetsBusy={sheetBusy}
         exportDisabled={!items.length}
       />
       <main className="app-main">
@@ -309,7 +350,7 @@ function App() {
           help={`Pick a size and press the button. We read public comments on recent ${nichePhrase(niche)} videos; nothing is posted.`}>
           <ScanPanel niche={niche} settings={settings} options={scanOptions} onOptionsChange={setScanOptions}
             onOpenOptions={() => { setSidebarPanel('options'); setSidebarOpen(true); window.setTimeout(() => document.querySelector<HTMLElement>('#sidebar-panel-options select')?.focus(), 50); }}
-            onResult={applyResult} hasResults={items.length > 0} />
+            onResult={applyResult} onHealthChange={refreshHealth} hasResults={items.length > 0} />
         </StepSection>
 
         <StepSection n={3} state={expandedStep === 3 ? 'current' : stepStates[2]} collapsed={stepStates[2] === 'done' && expandedStep !== 3}
@@ -424,5 +465,6 @@ fetch('/api/session').then(async (response) => {
   }
   const session = await response.json();
   setCsrfToken(session.csrfToken);
-  root.render(<StandaloneModeGate><App /></StandaloneModeGate>);
+  const [settingsResponse, configResponse] = await Promise.all([apiJson('/api/settings'), apiJson('/api/config')]);
+  root.render(<StandaloneModeGate><App initialSettings={settingsResponse.settings} initialHealth={configResponse} /></StandaloneModeGate>);
 }).catch(() => root.render(<p>Unable to connect. Please reload to try again.</p>));

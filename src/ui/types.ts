@@ -6,7 +6,8 @@ export type OpportunityType = 'all' | 'niche_lead' | 'affiliate_publisher_opport
 export type ReviewTab = 'best' | 'maybe' | 'not_fit' | 'done' | 'buyer' | 'publisher';
 export type NicheProfile = 'affiliate_marketing' | 'money_making' | 'work_from_home' | 'side_hustles' | 'biz_opp' | 'ai_tools' | 'traffic_leads' | 'organic_traffic';
 export type FreshnessWindow = '14' | '30' | 'all';
-export type HealthConfig = { ok?: boolean; youtubeApiKeyConfigured?: boolean; aiDraftsConfigured?: boolean; aiDraftProvider?: string };
+export type KeyLastKnown = { state: 'unknown' | 'ok' | 'invalid_key' | 'quota_exceeded'; checkedAt: string | null };
+export type HealthConfig = { ok?: boolean; youtubeApiKeyConfigured?: boolean; aiDraftsConfigured?: boolean; aiDraftProvider?: string; apiHealth?: { youtube: KeyLastKnown; openai: KeyLastKnown }; googleClientId?: string | null };
 export type AppSettings = { defaultScanDepth: number; defaultFreshnessDays: number; replyTone: string; enabledNiches: NicheProfile[] };
 export type PreviousScan = { id: string; title?: string; status: string; commentsFetched: number; commentsInserted: number; estimatedQuotaUnits: number; startedAt: string; completedAt?: string; metadata?: Record<string, any> };
 
@@ -71,6 +72,7 @@ export type ScoredFixture = FixtureItem & {
     scoreDimensions: ScoreDimension[];
     lowFitReason?: string | null;
     nicheProfileLabel?: string | null;
+    nicheProfileId?: NicheProfile | null;
   };
 };
 

@@ -10,13 +10,14 @@ export type ScanResult = { items: ScoredFixture[]; summary: ScanSummary; nicheSc
 
 const QUERIES_PER_NICHE: Record<string, number> = { affiliate_marketing: 6, money_making: 6, work_from_home: 6, side_hustles: 5, biz_opp: 6, ai_tools: 5, traffic_leads: 5, organic_traffic: 5 };
 
-export function ScanPanel({ niche, settings, options, onOptionsChange, onOpenOptions, onResult, hasResults }: {
+export function ScanPanel({ niche, settings, options, onOptionsChange, onOpenOptions, onResult, onHealthChange, hasResults }: {
   niche: NicheProfile;
   settings: AppSettings;
   options: ScanOptions;
   onOptionsChange: (next: ScanOptions) => void;
   onOpenOptions: () => void;
   onResult: (result: ScanResult) => void;
+  onHealthChange: () => void;
   hasResults: boolean;
 }) {
   const preset = presetFor(options);
@@ -36,6 +37,7 @@ export function ScanPanel({ niche, settings, options, onOptionsChange, onOpenOpt
       setMessage(`That did not work: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
       setLoading(false);
+      onHealthChange();
     }
   }
 

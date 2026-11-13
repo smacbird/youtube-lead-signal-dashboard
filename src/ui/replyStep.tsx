@@ -37,7 +37,7 @@ export function ReplyPanel({ item, status, selectedDraftId, aiDrafts, onSelectDr
   const [note, setNote] = useState('');
   const drafts = makeDrafts(item, selectedDraftId);
   const selectedDraft = pickDraftForLead(drafts, selectedDraftId, item.opportunity.id);
-  const answerDraft = drafts.find((draft) => draft.style === 'ai_short_helpful') || drafts.find((draft) => draft.style === 'ai_consultative');
+  const answerDraft = drafts.find((draft) => draft.style === 'ai_short_helpful') || drafts.find((draft) => draft.style === 'ai_consultative') || drafts.find((draft) => draft.style === 'fallback_short');
   const replyAllowed = item.score.opportunityType !== 'low_fit_comment' && !['replied', 'rejected'].includes(status);
   const selectedAnswer = replyAllowed && selectedDraft?.style !== 'ai_content_angle' ? selectedDraft : undefined;
   const commentUrl = makeYouTubeCommentUrl(item);
@@ -105,14 +105,19 @@ export function ReplyPanel({ item, status, selectedDraftId, aiDrafts, onSelectDr
         {drafts.length ? (
           <>
             <div className="draft-groups">
-              <strong>Written by AI</strong>
-              <div className="draft-tabs" aria-label="Written replies for this comment">
-                {drafts.map((draft) => (
-                  <button aria-pressed={selectedDraft?.id === draft.id} className={selectedDraft?.id === draft.id ? 'draft-tab active' : 'draft-tab'} key={draft.id} onClick={() => onSelectDraft(draft.id)} type="button">
-                    {selectedDraft?.id === draft.id ? '✓ ' : ''}{replyStyleLabels[draft.style] ?? draft.style}
-                  </button>
-                ))}
-              </div>
+              {(['openai', 'safe_fallback'] as const).map((source) => {
+                const group = drafts.filter((draft) => draft.createdBy === source);
+                if (!group.length) return null;
+                const name = source === 'openai' ? 'Written by AI' : 'Suggested draft (automatic fallback)';
+                return <div key={source} className="draft-group">
+                  <strong>{name}</strong>
+                  <div className="draft-tabs" aria-label={`${name} for this comment`}>
+                    {group.map((draft) => <button aria-pressed={selectedDraft?.id === draft.id} className={selectedDraft?.id === draft.id ? 'draft-tab active' : 'draft-tab'} key={draft.id} onClick={() => onSelectDraft(draft.id)} type="button">
+                      {selectedDraft?.id === draft.id ? '✓ ' : ''}{replyStyleLabels[draft.style] ?? draft.style}
+                    </button>)}
+                  </div>
+                </div>;
+              })}
             </div>
             {selectedDraft && (
               <article className={item.score.riskLevel === 'high' ? 'draft selected-draft high-risk' : 'draft selected-draft'} aria-label="Selected reply idea">

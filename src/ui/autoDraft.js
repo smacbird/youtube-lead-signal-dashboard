@@ -1,8 +1,9 @@
 import { canPrepareReply } from '../scoring/draftSafety.js';
 
-/** Only an open, real lead with no cached AI draft needs automatic generation. */
+/** An open lead with no safe draft gets AI or a niche-safe fallback (if no key). */
 export function shouldAutoDraft(item, status, { hasKey, isDemo, attempted = false } = {}) {
-  if (!hasKey || isDemo || attempted || !item) return false;
+  if (isDemo || attempted || !item) return false;
+  if (!hasKey && !item.score?.nicheProfileId) return false; // no niche-safe fallback for manual imports
   if (status === 'replied' || status === 'rejected' || item.score?.opportunityType === 'low_fit_comment') return false;
   return !canPrepareReply(item.opportunity?.replyDrafts || [], item.opportunity?.id);
 }

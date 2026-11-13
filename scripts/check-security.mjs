@@ -25,14 +25,14 @@ assert.match(productionLogin.cookie, /; Path=\/; HttpOnly; SameSite=Strict; Secu
 const sample = createEmptyStore();
 for (const id of ['shared', 'unique']) {
   sample.videos[id] = { id, youtubeVideoId: id, title: id };
-  sample.comments[`comment_${id}`] = { id: `comment_${id}`, textOriginal: id };
+  sample.comments[`comment_${id}`] = { id: `comment_${id}`, videoId: id, textOriginal: id };
   sample.opportunities[`opp_${id}`] = { id: `opp_${id}`, videoId: id, commentId: `comment_${id}`, overallScore: 50, status: 'new' };
   sample.replyDrafts[`draft_${id}`] = { id: `draft_${id}`, opportunityId: `opp_${id}` };
   sample.statusHistory[`history_${id}`] = { id: `history_${id}`, opportunityId: `opp_${id}` };
   sample.scoreDimensions[`opp_${id}`] = [{ opportunityId: `opp_${id}`, score: 50 }];
 }
-sample.importRuns.run_one = { id: 'run_one', startedAt: '2026-05-01', requestedVideoIds: ['shared', 'unique'] };
-sample.importRuns.run_two = { id: 'run_two', startedAt: '2026-05-02', requestedVideoIds: ['shared'] };
+sample.importRuns.run_one = { id: 'run_one', startedAt: '2026-05-01', requestedVideoIds: ['shared', 'unique'], opportunityIds: ['opp_shared', 'opp_unique'], commentIds: ['comment_shared', 'comment_unique'], videoIds: ['shared', 'unique'] };
+sample.importRuns.run_two = { id: 'run_two', startedAt: '2026-05-02', requestedVideoIds: ['shared'], opportunityIds: ['opp_shared'], commentIds: ['comment_shared'], videoIds: ['shared'] };
 await new JsonImportStore({ filePath: storePath }).save(sample);
 
 async function freePort() {
@@ -52,7 +52,8 @@ async function withServer(configured, run) {
   delete env.AUTH_ORIGIN;
   delete env.YOUTUBE_API_KEY;
   delete env.OPENAI_API_KEY;
-  if (configured) Object.assign(env, { OWNER_PASSWORD: PASSWORD, SESSION_SECRET: SECRET, AUTH_ORIGIN: origin });
+  delete env.GOOGLE_CLIENT_ID;
+  if (configured) Object.assign(env, { OWNER_PASSWORD: PASSWORD, SESSION_SECRET: SECRET, AUTH_ORIGIN: origin, GOOGLE_CLIENT_ID: '1234567890-test.apps.googleusercontent.com' });
   const child = spawn(process.execPath, ['server/server.js'], { cwd: process.cwd(), env, stdio: 'ignore' });
   try {
     for (let attempt = 0; attempt < 50; attempt++) {
@@ -80,7 +81,7 @@ try {
     const unauthenticated = [
       ['/', 'GET'], ['/assets/index.js', 'GET'], ['/api/opportunities', 'GET'],
       ['/api/import-runs', 'GET'], ['/api/import-runs/run_one', 'GET'],
-      ['/api/export/opportunities.csv', 'GET'], ['/api/config', 'GET'],
+      ['/api/export/opportunities.csv', 'GET'], ['/api/config', 'GET'], ['/api/settings', 'GET'], ['/api/settings', 'PUT'],
       ['/api/opportunities/opp_shared/ai-drafts', 'POST'],
       ['/api/scan/youtube-niche', 'POST'], ['/api/import/youtube', 'POST'],
       ['/api/opportunities/opp_shared/status', 'POST'], ['/api/import-runs/run_one', 'DELETE'],
@@ -91,6 +92,12 @@ try {
     }
     const loginPage = await fetch(`${origin}/login`);
     assert.equal(loginPage.headers.get('referrer-policy'), 'same-origin', 'browsers must still send a real Origin on form posts');
+    const csp = loginPage.headers.get('content-security-policy');
+    assert.match(csp, /script-src 'self' https:\/\/accounts\.google\.com\/gsi\/client/);
+    assert.match(csp, /connect-src 'self' https:\/\/accounts\.google\.com\/gsi\/ https:\/\/sheets\.googleapis\.com\/v4\/spreadsheets/);
+    assert.match(csp, /frame-src https:\/\/accounts\.google\.com\/gsi\//);
+    for (const directive of ["default-src 'self'", "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'", "form-action 'self'"]) assert.ok(csp.includes(directive));
+    assert.equal(loginPage.headers.get('cross-origin-opener-policy'), 'same-origin-allow-popups');
     for (const brand of ['/brand-logo.png', '/favicon.png']) {
       const image = await fetch(`${origin}${brand}`);
       assert.equal(image.status, 200, `${brand} is public so the sign-in page can show it`);
@@ -100,7 +107,9 @@ try {
     assert.equal(loginCss.status, 200, 'login stylesheet is public so sign-in can be styled');
     assert.match(loginCss.headers.get('content-type'), /text\/css/);
     assert.equal((await fetch(`${origin}/login.css.map`, { redirect: 'manual' })).status, 303, 'other files stay behind the login');
-    assert.equal((await fetch(`${origin}/api/health`)).status, 200);
+    const publicHealth = await fetch(`${origin}/api/health`);
+    assert.equal(publicHealth.status, 200);
+    assert.deepEqual(await publicHealth.json(), { ok: true }, 'public health reveals no account or key status');
     assert.equal((await fetch(`${origin}/login`)).status, 200);
     const noOrigin = await fetch(`${origin}/login`, { method: 'POST', body: new URLSearchParams({ password: PASSWORD }), redirect: 'manual' });
     assert.equal(noOrigin.status, 403, 'login requires same origin');
@@ -119,7 +128,25 @@ try {
     assert.equal((await fetch(origin, { headers })).status, 200);
     assert.equal((await fetch(`${origin}/api/import-runs`, { headers })).status, 200);
     assert.equal((await fetch(`${origin}/api/opportunities`, { headers })).status, 200);
+    const privateConfig = await (await fetch(`${origin}/api/config`, { headers })).json();
+    assert.equal(privateConfig.googleClientId, '1234567890-test.apps.googleusercontent.com', 'only public OAuth client id is exposed after login');
+    assert.deepEqual(privateConfig.apiHealth.youtube, { state: 'unknown', checkedAt: null });
+    assert.deepEqual(privateConfig.apiHealth.openai, { state: 'unknown', checkedAt: null });
+    assert.ok(!JSON.stringify(privateConfig).includes(PASSWORD) && !JSON.stringify(privateConfig).includes(SECRET), 'config contains status only, never credentials');
     assert.equal((await fetch(`${origin}/api/export/opportunities.csv`, { headers })).status, 200);
+    const defaultSettings = await (await fetch(`${origin}/api/settings`, { headers })).json();
+    assert.equal(defaultSettings.settings.defaultScanDepth, 5, 'old stores get safe settings defaults');
+    const settingsUrl = `${origin}/api/settings`;
+    const updatedSettings = { defaultScanDepth: 10, defaultFreshnessDays: 14, replyTone: 'Plain and practical', enabledNiches: ['work_from_home', 'side_hustles'] };
+    assert.equal((await fetch(settingsUrl, { method: 'PUT', headers: { ...headers, origin, 'content-type': 'application/json' }, body: JSON.stringify(updatedSettings) })).status, 403, 'settings change requires CSRF');
+    const settingsHeaders = { ...headers, origin, 'content-type': 'application/json', 'x-csrf-token': csrfToken };
+    assert.equal((await fetch(settingsUrl, { method: 'PUT', headers: settingsHeaders, body: JSON.stringify({ ...updatedSettings, OWNER_PASSWORD: 'do-not-accept' }) })).status, 400, 'unknown settings cannot enter the store');
+    assert.equal((await fetch(settingsUrl, { method: 'PUT', headers: settingsHeaders, body: JSON.stringify({ ...updatedSettings, enabledNiches: [] }) })).status, 400, 'at least one niche required');
+    const settingsResponse = await fetch(settingsUrl, { method: 'PUT', headers: settingsHeaders, body: JSON.stringify(updatedSettings) });
+    assert.equal(settingsResponse.status, 200);
+    assert.deepEqual((await settingsResponse.json()).settings, updatedSettings);
+    assert.deepEqual((await (await fetch(settingsUrl, { headers })).json()).settings, updatedSettings, 'settings survive a second request');
+    assert.deepEqual(await new JsonImportStore({ filePath: storePath }).getSettings(), updatedSettings, 'settings persist in isolated JSON store');
     const route = `${origin}/api/import-runs/run_one`;
     assert.equal((await fetch(route, { method: 'DELETE', headers: { ...headers, origin } })).status, 403, 'missing CSRF');
     assert.equal((await fetch(route, { method: 'DELETE', headers: { ...headers, origin: 'https://evil.example', 'x-csrf-token': csrfToken } })).status, 403, 'wrong origin');
@@ -135,6 +162,13 @@ try {
     assert.ok(!persisted.videos.unique && !persisted.opportunities.opp_unique && !persisted.comments.comment_unique);
     const remaining = await fetch(`${origin}/api/import-runs/run_two`, { headers });
     assert.equal((await remaining.json()).items.length, 1);
+    await new JsonImportStore({ filePath: storePath }).mutate((data) => {
+      data.importRuns.legacy = { id: 'legacy', startedAt: '2025-01-01', requestedVideoIds: ['shared'] };
+    });
+    const legacyDelete = await fetch(`${origin}/api/import-runs/legacy`, { method: 'DELETE', headers: { ...headers, origin, 'x-csrf-token': csrfToken } });
+    assert.equal(legacyDelete.status, 409, 'old runs without exact membership cannot be destructively deleted');
+    assert.equal((await legacyDelete.json()).code, 'legacy_run_membership_unknown');
+    assert.ok((await new JsonImportStore({ filePath: storePath }).getImportRun('legacy')), 'failed deletion leaves old scan intact');
     const logout = await fetch(`${origin}/logout`, { method: 'POST', headers: { ...headers, origin, 'x-csrf-token': csrfToken }, redirect: 'manual' });
     assert.equal(logout.status, 303);
     assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);
