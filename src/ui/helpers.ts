@@ -1,3 +1,4 @@
+import { uniqueDraftStyles } from './draftSelection.js';
 import { leadBucket } from '../scoring/leadBuckets.js';
 import { safeDraftsForOpportunity } from '../scoring/draftSafety.js';
 import type { FreshnessWindow, LocalStatus, NicheProfile, OpportunityType, ReviewTab, ScanSummary, ScoredFixture } from './types';
@@ -221,8 +222,9 @@ export function exportOpportunitiesCsv(items: ScoredFixture[], statuses: Record<
   URL.revokeObjectURL(url);
 }
 
-export function makeDrafts(item: ScoredFixture) {
-  return safeDraftsForOpportunity(item.opportunity.replyDrafts ?? [], item.opportunity.id);
+export function makeDrafts(item: ScoredFixture, selectedDraftId?: string) {
+  const safe = safeDraftsForOpportunity(item.opportunity.replyDrafts ?? [], item.opportunity.id);
+  return uniqueDraftStyles(safe, selectedDraftId);
 }
 
 export function transitionOptions(status: LocalStatus, riskLevel: ScoredFixture['score']['riskLevel']) {

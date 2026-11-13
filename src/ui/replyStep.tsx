@@ -35,7 +35,7 @@ export function ReplyPanel({ item, status, selectedDraftId, aiDrafts, onSelectDr
 }) {
   const [generating, setGenerating] = useState(false);
   const [note, setNote] = useState('');
-  const drafts = makeDrafts(item);
+  const drafts = makeDrafts(item, selectedDraftId);
   const selectedDraft = pickDraftForLead(drafts, selectedDraftId, item.opportunity.id);
   const answerDraft = drafts.find((draft) => draft.style === 'ai_short_helpful') || drafts.find((draft) => draft.style === 'ai_consultative');
   const replyAllowed = item.score.opportunityType !== 'low_fit_comment' && !['replied', 'rejected'].includes(status);

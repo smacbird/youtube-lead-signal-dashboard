@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { pickSelectedItem, pickDraftForLead } from '../src/ui/draftSelection.js';
+import { pickSelectedItem, pickDraftForLead, uniqueDraftStyles } from '../src/ui/draftSelection.js';
 import { safeDraftsForOpportunity, canPrepareReply } from '../src/scoring/draftSafety.js';
 import { shouldAutoDraft } from '../src/ui/autoDraft.js';
 const leads = [{ id: 'lead_a' }, { id: 'lead_b' }];
@@ -14,6 +14,14 @@ const drafts = [
 assert.equal(pickDraftForLead(drafts, 'draft_a', 'lead_b')?.body, 'B topic', 'old selected draft cannot bleed into another lead');
 assert.equal(pickDraftForLead(drafts, 'draft_b', 'lead_a')?.body, 'A topic');
 assert.equal(pickDraftForLead(drafts, undefined, 'lead_b')?.body, 'B topic');
+const regenerated = [
+  { id: 'short_old', style: 'ai_short_helpful', createdAt: '2026-01-01T00:00:00Z' },
+  { id: 'detail_old', style: 'ai_consultative', createdAt: '2026-01-01T00:00:00Z' },
+  { id: 'short_new', style: 'ai_short_helpful', createdAt: '2026-02-01T00:00:00Z' },
+  { id: 'video', style: 'ai_content_angle', createdAt: '2026-02-01T00:00:00Z' },
+];
+assert.deepEqual(uniqueDraftStyles(regenerated).map((draft) => draft.id), ['short_new', 'detail_old', 'video'], 'only one chip per style, newest by default');
+assert.equal(uniqueDraftStyles(regenerated, 'short_old')[0].id, 'short_old', 'a selected previous version stays selected');
 const saved = [
   { id: 'old_template', opportunityId: 'lead_a', createdBy: 'template_import', style: 'helpful_consultative', body: 'Helpful angle to review manually: answer the question' },
   { id: 'old_fallback', opportunityId: 'lead_a', createdBy: 'server_ai_fallback', style: 'ai_short_helpful', body: 'A generic fallback' },
