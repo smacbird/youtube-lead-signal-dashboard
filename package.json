@@ -10,6 +10,7 @@
     "check:scoring": "node scripts/check-scoring.mjs",
     "dev:server": "node server/server.js",
     "check:import": "node scripts/check-import.mjs",
+    "check:olsp": "node scripts/check-olsp-review.mjs",
     "start": "node server/server.js",
     "check:security": "node scripts/check-security.mjs && node scripts/check-key-health.mjs && node scripts/check-sheets.mjs",
     "check:niche": "node scripts/check-niche-scoring.mjs",

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { scoreNicheLead, LOW_FIT_REASONS } from '../server/scoring/nicheLead.js';
 import { leadBucket } from '../src/scoring/leadBuckets.js';
-import { NICHE_PROFILES } from '../server/youtube/nicheProfiles.js';
+import { NICHE_PROFILES, LEGACY_PROFILE_ALIASES, resolveNicheProfile, listNicheProfiles } from '../server/youtube/nicheProfiles.js';
 import { candidateTarget, rankCandidateVideos, selectNicheVideos } from '../server/youtube/videoRanking.js';
 import { importYouTubeVideos } from '../server/import/importService.js';
 import { JsonImportStore } from '../server/persistence/store.js';
@@ -57,46 +57,58 @@ const UNIVERSAL_NOISE = [
   ['What mic are you using?', 'video_housekeeping', /mic/i],
 ];
 
+// One representative lead per new profile (comment evidence of real intent, not just a
+// topic match): a personal situation, concrete blocker, cost/time, legitimacy or a
+// next-step/resource ask, paired with the profile's own keywords.
 const NICHE_LEADS = {
+  clicks_no_sales: [
+    ['I keep getting clicks but no sales. Any tips on what to fix first?', /recommendation|tips/i],
+    ['My affiliate links get clicks but are not converting. How long before sales usually start?', /cost or time/i],
+  ],
+  traffic_leads: [
+    ['How do I get my first leads with no website and no budget for ads?', /start|situation|leads/i],
+    ['What landing page tool would you recommend to turn traffic into leads?', /recommendation/i],
+  ],
+  affiliate_funnels: [
+    ['How do I start building a sales funnel with an opt-in page as a beginner?', /start|beginner/i],
+    ['What lead magnet works best for an affiliate opt-in funnel? Any suggestions?', /recommendation/i],
+  ],
+  email_follow_up: [
+    ['Which autoresponder do you recommend for affiliate email follow up?', /recommendation/i],
+    ['I have no email list yet. How do I start a welcome email sequence for affiliate offers?', /start|situation/i],
+  ],
+  organic_traffic: [
+    ['How long does it take to rank on Google with a new blog for organic traffic?', /cost or time/i],
+    ["I'm a complete beginner with no backlinks. Where should I start with SEO?", /start/i],
+  ],
+  choosing_offers: [
+    ['Which affiliate program do you recommend for beginners?', /recommendation/i],
+    ['Should I promote high ticket or low ticket offers when I am just starting out?', /start/i],
+  ],
+  training_reviews: [
+    ['Is this affiliate marketing course worth it or is it a scam?', /legit or worth it/i],
+    ['How much does this training program cost and is it legit for beginners?', /cost|legit/i],
+  ],
   affiliate_marketing: [
     ['How do I start affiliate marketing with no website and no money?', /start/i],
     ['Is Amazon associates worth it for a beginner or should I try clickbank?', /legit or worth it/i],
     ['What tool do you recommend for tracking affiliate link clicks?', /recommendation/i],
   ],
-  money_making: [
-    ['Is this legit or a scam? How much does it cost to start?', /cost.*legit|legit.*cost/i],
-    ["I'm 52 and lost my job last month, where should I start to make money online?", /situation|start/i],
-    ['How long until I can actually earn online doing this as a complete beginner?', /cost or time/i],
+  ai_tools: [
+    ['Which AI tool do you recommend for writing marketing content? Is it free?', /recommendation|cost/i],
+    ['I have no tech skills. How do I start using ChatGPT for my marketing workflow?', /start|situation/i],
+  ],
+  biz_opp: [
+    ['Affiliate marketing vs dropshipping — which business model is better for a beginner?', /recommendation/i],
+    ['What is the best online business model to start with low startup cost?', /cost/i],
   ],
   work_from_home: [
     ["I'm a stay at home mom with no experience. How do I get started with a home based business?", /start.*stay at home mom|stay at home mom/i],
-    ['Is this work from home business legit? What are the startup costs?', /cost|legit/i],
-    ['I have a full time job, how many hours a week would a side business like this need?', /cost or time/i],
+    ['Is this home based business legit? What are the startup costs?', /cost|legit/i],
   ],
   side_hustles: [
     ['Which side hustle would you recommend for someone with no skills and $100?', /recommendation/i],
-    ['How much time per week does this side hustle take after work?', /cost or time/i],
-    ['Does this actually work or is it another overhyped side hustle?', /legit or worth it/i],
-  ],
-  biz_opp: [
-    ['Is this business opportunity a pyramid scheme? What is the cost to join?', /legit|cost/i],
-    ["I'm retired and thinking about a franchise. Where do I start?", /start|retired/i],
-    ['Can someone explain the business model? Is the profit real?', /recommendation|legit/i],
-  ],
-  ai_tools: [
-    ['Which AI tool is best for writing emails for a small business? Is it free?', /recommendation|cost/i],
-    ['I have no tech skills, can you recommend an AI software to automate my workflow?', /recommendation|situation/i],
-    ['Is chatgpt plus worth it for a beginner or is the free version enough?', /legit or worth it/i],
-  ],
-  traffic_leads: [
-    ['How do I get my first leads with no website and no budget for ads?', /start|situation|leads/i],
-    ['What would you suggest for a landing page tool that converts?', /recommendation/i],
-    ['I just started a funnel but get zero traffic. Any tips?', /start|recommendation/i],
-  ],
-  organic_traffic: [
-    ['How long does it take to rank on Google with a new blog?', /cost or time/i],
-    ["I'm a complete beginner with no backlinks. Where should I start with SEO?", /start/i],
-    ['Is free traffic from SEO still worth it in 2026?', /legit or worth it/i],
+    ['I lost my job and I am 52. What is a realistic way to make money online as a beginner?', /situation/i],
   ],
 };
 
@@ -113,8 +125,68 @@ for (const profileId of Object.keys(NICHE_PROFILES)) {
   }
 }
 
+// Approved lineup: exact order, exact labels and the two groups the API/UI render.
+const EXPECTED_LINEUP = [
+  ['clicks_no_sales', 'main', 'Clicks but No Sales'],
+  ['traffic_leads', 'main', 'Getting Traffic & Leads'],
+  ['affiliate_funnels', 'main', 'Affiliate Funnels & Opt-Ins'],
+  ['email_follow_up', 'main', 'Email Follow-Up'],
+  ['organic_traffic', 'main', 'Organic Traffic'],
+  ['choosing_offers', 'main', 'Choosing Affiliate Offers'],
+  ['training_reviews', 'main', 'Affiliate Training Reviews'],
+  ['affiliate_marketing', 'main', 'Affiliate Marketing'],
+  ['ai_tools', 'explore', 'AI Tools for Marketing'],
+  ['biz_opp', 'explore', 'Compare Online Businesses'],
+  ['work_from_home', 'explore', 'Home-Based Business'],
+  ['side_hustles', 'explore', 'Side Hustles & Online Income'],
+];
+const lineup = listNicheProfiles();
+assert.equal(lineup.length, 12, 'exactly 12 profiles');
+assert.deepEqual(lineup.map((p) => [p.id, p.group, p.label]), EXPECTED_LINEUP, 'API order, groups and labels match the approved lineup');
+assert.deepEqual(lineup.filter((p) => p.group === 'main').map((p) => p.id), EXPECTED_LINEUP.filter(([, g]) => g === 'main').map(([id]) => id), 'eight main cards');
+assert.deepEqual(lineup.filter((p) => p.group === 'explore').map((p) => p.id), ['ai_tools', 'biz_opp', 'work_from_home', 'side_hustles'], 'four explore cards');
+assert.ok(!NICHE_PROFILES.money_making, 'standalone money-making profile removed');
+// Bounded, non-empty query bundles (no keyword-dump blow-up of search quota).
+for (const profile of lineup) {
+  assert.ok(profile.queries.length >= 4 && profile.queries.length <= 6, `${profile.id} has 4–6 search queries, got ${profile.queries.length}`);
+  assert.ok(profile.queries.every((q) => typeof q === 'string' && q.trim().length > 6), `${profile.id} queries are real phrases`);
+}
+
+// Old saved money_making scans resolve gracefully (folded into side hustles), never crash.
+assert.equal(LEGACY_PROFILE_ALIASES.money_making, 'side_hustles');
+assert.equal(resolveNicheProfile('money_making').label, 'Side Hustles & Online Income', 'legacy money_making aliases to side hustles');
+assert.equal(resolveNicheProfile('no_such_profile').label, 'Affiliate Marketing', 'unknown id falls back to affiliate marketing');
+const legacyLead = scoreNicheLead({ text: 'How do I start making money online with no experience?', profileId: 'money_making' });
+assert.equal(legacyLead.opportunityType, 'niche_lead', 'legacy money_making still scores a real lead');
+assert.ok(legacyLead.summary && legacyLead.summary.length > 8, 'legacy money_making lead has a summary');
+
+// Work-from-home JOB seekers are noise, not business prospects.
+for (const text of ['Are you hiring? I can send you my resume', 'I just need a remote job, is this a job?', 'Any jobs available? I want to apply for a position']) {
+  const job = check('work_from_home', text, { type: LOW, reason: 'remote_job_request' });
+  assert.match(job.summary, /job, not/i, `"${text}" flagged as a job request`);
+}
+// But a business starter who merely mentions their old job is still a lead.
+const quitJob = check('work_from_home', 'I lost my 9 to 5 job and want to start a home based business, how do I begin?', { type: LEAD });
+assert.notEqual(quitJob.lowFitReason, 'remote_job_request');
+// A job seeker with start-intent but no business keyword is still a job request, not a lead.
+const jobWithStart = check('work_from_home', 'I want to start a remote job, where should I apply?', { type: LOW, reason: 'remote_job_request' });
+assert.equal(leadBucket(jobWithStart), 'not_fit');
+
+// Review follow-up: high-intent comment-fit cases that must land in Best, not Maybe/noise.
+const emailFit = check('email_follow_up', 'I have 30 subscribers and no sales. What should I send after they opt in?', { type: LEAD });
+assert.equal(emailFit.leadFit, 'best', 'subscriber count + next-step ask is a strong email lead');
+assert.ok(emailFit.nicheMatchedKeywords.length > 0, 'email follow-up now matches subscriber/opt-in keywords');
+const funnelFit = check('affiliate_funnels', 'I built an opt-in page but no one signs up. What should I change?', { type: LEAD });
+assert.equal(funnelFit.leadFit, 'best', 'specific funnel blocker + what-to-change ask is a strong lead');
+const offerFit = check('choosing_offers', 'I have a small fitness audience. Which affiliate offer should I promote?', { type: LEAD });
+assert.equal(offerFit.leadFit, 'best', 'audience + "which affiliate offer" selection ask is a strong lead');
+// Nearby counterexample: generic praise with no ask stays noise even in these niches.
+for (const niche of ['email_follow_up', 'affiliate_funnels', 'choosing_offers']) {
+  assert.equal(check(niche, 'Great video, thanks so much!', { type: LOW, reason: 'praise_only' }).leadFit, null);
+}
+
 // Specific reasons and behaviour.
-const spam = check('money_making', 'Contact Mr James on telegram, he made me $3000 per week guaranteed', { type: LOW, reason: 'self_promotion', risk: 'high', action: 'reject_as_spam' });
+const spam = check('side_hustles', 'Contact Mr James on telegram, he made me $3000 per week guaranteed', { type: LOW, reason: 'self_promotion', risk: 'high', action: 'reject_as_spam' });
 assert.equal(spam.overallScore, 0, 'spam scores 0');
 const owner = check('work_from_home', 'How do I start? Answer in my next video!', { type: LOW, reason: 'channel_owner', input: { isChannelOwner: true } });
 assert.match(owner.summary, /own channel/i);
@@ -122,9 +194,9 @@ const situation = check('work_from_home', "I'm 50, no experience and no website.
 assert.match(situation.summary, /Asks how to start/);
 assert.match(situation.summary, /no experience/);
 assert.match(situation.summary, /i'm 50/i);
-const riskyLead = check('money_making', 'Is this guaranteed income legit? How much does it cost to start?', { type: LEAD, risk: 'medium' });
+const riskyLead = check('side_hustles', 'Is this guaranteed income legit? How much does it cost to start?', { type: LEAD, risk: 'medium' });
 assert.match(riskyLead.summary, /Caution: mentions "guaranteed"/, 'RISK_KEYWORDS flag a lead with caution');
-const plainRiskFree = scoreNicheLead({ text: 'How do I start with no experience?', profileId: 'money_making' });
+const plainRiskFree = scoreNicheLead({ text: 'How do I start with no experience?', profileId: 'side_hustles' });
 assert.ok(riskyLead.overallScore < plainRiskFree.overallScore + 20, 'risk phrases do not inflate score');
 const nicheBoosted = scoreNicheLead({ text: 'Is a home business opportunity legit?', profileId: 'work_from_home' });
 assert.ok(nicheBoosted.nicheMatchedKeywords.includes('home business opportunity'), 'niche keyword match recorded');

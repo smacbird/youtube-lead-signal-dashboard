@@ -4,14 +4,18 @@ import { generateReplyDrafts } from '../server/ai/draftGenerator.js';
 import { safeDraftsForOpportunity, canPrepareReply, isRealAIDraft } from '../src/scoring/draftSafety.js';
 
 const comments = {
+  clicks_no_sales: 'I get clicks but no sales. How do I start fixing this?',
+  traffic_leads: 'How do I start getting leads to my page?',
+  affiliate_funnels: 'How do I start building an affiliate opt-in funnel?',
+  email_follow_up: 'How do I start a follow up email sequence?',
+  organic_traffic: 'How do I start with organic traffic?',
+  choosing_offers: 'How do I start choosing an affiliate offer to promote?',
+  training_reviews: 'How do I start choosing an affiliate course worth the money?',
   affiliate_marketing: 'How do I start affiliate marketing with no experience?',
-  money_making: 'I am new to making money online. Where do I start?',
+  ai_tools: 'How do I start using AI tools for my marketing workflow?',
+  biz_opp: 'How do I start comparing online business models?',
   work_from_home: 'How do I start a business from home?',
   side_hustles: 'How do I start a side hustle after work?',
-  biz_opp: 'How do I start evaluating a business opportunity?',
-  ai_tools: 'How do I start using AI tools for my workflow?',
-  traffic_leads: 'How do I start getting leads to my page?',
-  organic_traffic: 'How do I start with organic traffic?',
 };
 for (const [nicheProfileId, comment] of Object.entries(comments)) {
   const opportunity = { id: `opp_${nicheProfileId}`, nicheProfileId, comment: { textOriginal: comment } };
@@ -50,4 +54,4 @@ try {
   assert.ok(canPrepareReply(drafts, 'offline'));
   await assert.rejects(() => generateReplyDrafts({ id: 'mismatch', nicheProfileId: 'affiliate_marketing', summary: 'About a different business (FBA).', comment: { textOriginal: 'How do I start Amazon FBA?' } }), /Reply ideas need the OpenAI key/);
 } finally { if (previous === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = previous; }
-console.log('Fallback replies checks passed: eight niches, regulated caution, provenance, no placeholder/mismatch, no-key path.');
+console.log('Fallback replies checks passed: twelve niches, regulated caution, provenance, no placeholder/mismatch, no-key path.');

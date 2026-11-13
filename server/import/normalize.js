@@ -1,4 +1,5 @@
 import { normalizeCommentUrl, normalizeVideoUrl } from '../youtube/url.js';
+import { olspVideoMatch, olspCommentMatch } from '../youtube/olspReview.js';
 
 const AFFILIATE_TERMS = ['affiliate', 'commission', 'amazon associates', 'shareasale', 'impact', 'niche site', 'review site', 'buyer guide'];
 const REVENUE_TERMS = ['traffic but no', 'clicks but no', 'low revenue', 'not converting', 'commissions dropped', 'rpm'];
@@ -45,6 +46,8 @@ export function normalizeVideoFromYouTube(item) {
     title: snippet.title || 'Untitled YouTube video',
     channelId: snippet.channelId || null,
     channelName: snippet.channelTitle || 'Unknown channel',
+    description: snippet.description || '',
+    olspReview: olspVideoMatch({ ...snippet, channelName: snippet.channelTitle }),
     publishedAt: snippet.publishedAt || null,
     topic: 'youtube_import',
     offerFit: inferOfferFit({ title: snippet.title || '' }, ''),
@@ -71,6 +74,7 @@ export function normalizeCommentThreadFromYouTube(thread, video) {
     authorDisplayName: commentSnippet.authorDisplayName || 'Unknown commenter',
     authorChannelId: commentSnippet.authorChannelId?.value || null,
     textOriginal,
+    olspReview: olspCommentMatch({ textOriginal }),
     publishedAt: commentSnippet.publishedAt || null,
     updatedAt: commentSnippet.updatedAt || null,
     likeCount: asInt(commentSnippet.likeCount),
@@ -113,4 +117,3 @@ export function makeScoringItem(video, comment) {
     },
   };
 }
-

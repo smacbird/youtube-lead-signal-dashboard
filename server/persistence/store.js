@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { canPrepareReply, isSafeReplyDraft } from '../../src/scoring/draftSafety.js';
 import { bucketCounts } from '../../src/scoring/leadBuckets.js';
 import { settingsFromStore, validateSettings } from '../settings.js';
+import { olspReviewFor } from '../youtube/olspReview.js';
 
 const DEFAULT_STORE_PATH = resolve(process.cwd(), 'data/import-store.json');
 const VALID_STATUSES = new Set(['new', 'reviewed', 'approved', 'rejected', 'replied']);
@@ -335,6 +336,8 @@ export function hydrateOpportunity(store, opportunityId) {
   if (!opportunity) return null;
   return {
     ...opportunity,
+    // Compute for legacy saved results without rewriting historical records.
+    olspReview: olspReviewFor(store.videos[opportunity.videoId], store.comments[opportunity.commentId]) || opportunity.olspReview || null,
     video: store.videos[opportunity.videoId] || null,
     comment: store.comments[opportunity.commentId] || null,
     scoreDimensions: store.scoreDimensions[opportunityId] || [],

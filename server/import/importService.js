@@ -4,6 +4,7 @@ import { makeScoringItem, normalizeCommentThreadFromYouTube, normalizeVideoFromY
 import { parseManyYouTubeVideoInputs } from '../youtube/url.js';
 import { nicheScoreBoost, resolveNicheProfile } from '../youtube/nicheProfiles.js';
 import { scoreNicheLead } from '../scoring/nicheLead.js';
+import { olspReviewFor } from '../youtube/olspReview.js';
 import {
   createImportRun,
   finishImportRun,
@@ -63,6 +64,7 @@ function scoreAndPersist({ state, video, record, metadata, options }) {
         commentId: upsert.record.id,
         videoId: video.id,
         sourceType: 'youtube_import',
+        olspReview: olspReviewFor(video, upsert.record),
         scoringModel: 'niche_lead_v1',
         nicheProfileId: profileId,
         nicheProfileLabel: profile?.label || metadata.profileLabel || null,
@@ -91,6 +93,7 @@ function scoreAndPersist({ state, video, record, metadata, options }) {
       videoId: video.id,
       commentId: upsert.record.id,
       sourceType: 'youtube_import',
+      olspReview: olspReviewFor(video, upsert.record),
       lowFitReason: null,
       nicheProfileId: profileId,
       nicheProfileLabel: nicheBoost.profile?.label || metadata.profileLabel || null,

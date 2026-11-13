@@ -88,7 +88,7 @@ function csvEscape(value) {
 
 function opportunitiesToCsv(items) {
   const rows = [
-    ['score', 'type', 'priority', 'risk', 'status', 'reason', 'low_fit_reason', 'video', 'commenter', 'comment', 'url', 'niche'],
+    ['score', 'type', 'priority', 'risk', 'status', 'reason', 'low_fit_reason', 'olsp_review', 'olsp_reason', 'video', 'commenter', 'comment', 'url', 'niche'],
     ...items.map((item) => [
       item.overallScore,
       item.opportunityTypeLabel,
@@ -97,6 +97,8 @@ function opportunitiesToCsv(items) {
       item.status,
       item.summary,
       item.lowFitReason || '',
+      item.olspReview?.flagged ? 'OLSP: review' : '',
+      item.olspReview?.reason || '',
       item.video?.title,
       item.comment?.authorDisplayName,
       item.comment?.textOriginal,

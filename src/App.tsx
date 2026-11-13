@@ -6,7 +6,7 @@ import { apiJson, setCsrfToken } from './ui/api';
 import { pickSelectedItem } from './ui/draftSelection.js';
 import { shouldAutoDraft } from './ui/autoDraft.js';
 import { safeDraftsForOpportunity } from './scoring/draftSafety.js';
-import { buildScanSummary, exportOpportunitiesCsv, isWithinAge, matchesTab, nicheLabel, nichePhrase, normaliseImportedOpportunity, statusLabels, typeLabels } from './ui/helpers';
+import { NICHES, buildScanSummary, exportOpportunitiesCsv, isWithinAge, matchesTab, nicheLabel, nichePhrase, normaliseImportedOpportunity, statusLabels, typeLabels } from './ui/helpers';
 import { AppHeader, StepProgress, StepSection, type StepState } from './ui/layout';
 import { NichePicker } from './ui/nicheStep';
 import { ReplyPanel } from './ui/replyStep';
@@ -20,7 +20,9 @@ import { defaultScanOptions, type ScanOptions } from './ui/scanOptions.js';
 import type { AppSettings, FixtureItem, FreshnessWindow, HealthConfig, LocalStatus, NicheProfile, OpportunityType, ReviewTab, ScanSummary, ScoreBand, ScoredFixture, Status } from './ui/types';
 import './styles.css';
 
-const ALL_NICHES: NicheProfile[] = ['affiliate_marketing', 'money_making', 'work_from_home', 'side_hustles', 'biz_opp', 'ai_tools', 'traffic_leads', 'organic_traffic'];
+const ALL_NICHES: NicheProfile[] = NICHES.map((niche) => niche.id);
+// Default to the first enabled card in the approved order (Clicks but No Sales, unless disabled).
+const firstEnabledNiche = (enabled: NicheProfile[]): NicheProfile => ALL_NICHES.find((id) => enabled.includes(id)) ?? enabled[0];
 const LAST_RUN_KEY = 'best-lead-system:last-run';
 const SELECTED_LEAD_KEY = 'best-lead-system:selected-lead';
 const CORE_TABS: ReviewTab[] = ['best', 'maybe', 'not_fit', 'done'];
@@ -42,7 +44,7 @@ function App({ initialSettings, initialHealth }: { initialSettings: AppSettings;
   const [items, setItems] = useState<ScoredFixture[]>([]);
   const [summary, setSummary] = useState<ScanSummary | undefined>();
   const [isDemo, setIsDemo] = useState(false);
-  const [niche, setNiche] = useState<NicheProfile>(initialSettings.enabledNiches.includes('work_from_home') ? 'work_from_home' : initialSettings.enabledNiches[0]);
+  const [niche, setNiche] = useState<NicheProfile>(firstEnabledNiche(initialSettings.enabledNiches));
   const [nicheChosen, setNicheChosen] = useState(false);
   const [expandedStep, setExpandedStep] = useState(1);
   const [tab, setTab] = useState<ReviewTab>('best');
@@ -312,7 +314,7 @@ function App({ initialSettings, initialHealth }: { initialSettings: AppSettings;
         setSettings(next);
         // Settings set the starting choices; apply them to the next scan straight away.
         setScanOptions((current) => ({ ...defaultScanOptions(next), manualPages: current.manualPages }));
-        if (!next.enabledNiches.includes(niche)) setNiche(next.enabledNiches[0]);
+        if (!next.enabledNiches.includes(niche)) setNiche(firstEnabledNiche(next.enabledNiches));
       }} onClose={() => setShowSettings(false)} />}
 
       <div className="app-body">

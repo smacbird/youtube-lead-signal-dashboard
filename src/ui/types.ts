@@ -4,7 +4,11 @@ export type ScoreBand = 'all' | 'urgent' | 'high' | 'medium' | 'low';
 export type DraftStyle = 'helpful_consultative' | 'concise_resource' | 'content_follow_up' | 'risk_aware_decline';
 export type OpportunityType = 'all' | 'niche_lead' | 'affiliate_publisher_opportunity' | 'consumer_buyer_question' | 'low_fit_comment';
 export type ReviewTab = 'best' | 'maybe' | 'not_fit' | 'done' | 'buyer' | 'publisher';
-export type NicheProfile = 'affiliate_marketing' | 'money_making' | 'work_from_home' | 'side_hustles' | 'biz_opp' | 'ai_tools' | 'traffic_leads' | 'organic_traffic';
+export type NicheProfile =
+  | 'clicks_no_sales' | 'traffic_leads' | 'affiliate_funnels' | 'email_follow_up'
+  | 'organic_traffic' | 'choosing_offers' | 'training_reviews' | 'affiliate_marketing'
+  | 'ai_tools' | 'biz_opp' | 'work_from_home' | 'side_hustles';
+export type NicheGroup = 'main' | 'explore';
 export type FreshnessWindow = '14' | '30' | 'all';
 export type KeyLastKnown = { state: 'unknown' | 'ok' | 'invalid_key' | 'quota_exceeded'; checkedAt: string | null };
 export type HealthConfig = { ok?: boolean; youtubeApiKeyConfigured?: boolean; aiDraftsConfigured?: boolean; aiDraftProvider?: string; apiHealth?: { youtube: KeyLastKnown; openai: KeyLastKnown }; googleClientId?: string | null };
@@ -27,6 +31,9 @@ export type ReplyDraft = {
   complianceNotes: string[];
 };
 
+export type OlspMatch = { scope: 'source' | 'comment'; field: string; kind: string; indicator: string; evidence: string };
+export type OlspReview = { flagged: true; source: OlspMatch | null; comment: OlspMatch | null; reason: string };
+
 export type FixtureItem = {
   id: string;
   video: {
@@ -34,6 +41,7 @@ export type FixtureItem = {
     youtubeVideoId?: string;
     title: string;
     channelName: string;
+    description?: string;
     publishedAt: string;
     topic: string;
     offerFit: string[];
@@ -58,6 +66,7 @@ export type FixtureItem = {
 };
 
 export type ScoredFixture = FixtureItem & {
+  olspReview?: OlspReview | null;
   score: {
     overallScore: number;
     priority: Exclude<ScoreBand, 'all'>;

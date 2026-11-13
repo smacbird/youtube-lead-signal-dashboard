@@ -1,17 +1,29 @@
 import { uniqueDraftStyles } from './draftSelection.js';
 import { leadBucket } from '../scoring/leadBuckets.js';
 import { safeDraftsForOpportunity } from '../scoring/draftSafety.js';
-import type { FreshnessWindow, LocalStatus, NicheProfile, OpportunityType, ReviewTab, ScanSummary, ScoredFixture } from './types';
+import { olspReviewFor } from '../../server/youtube/olspReview.js';
+import type { FreshnessWindow, LocalStatus, NicheGroup, NicheProfile, OpportunityType, ReviewTab, ScanSummary, ScoredFixture } from './types';
 
-export const NICHES: Array<{ id: NicheProfile; label: string; phrase: string; finds: string }> = [
-  { id: 'affiliate_marketing', label: 'Affiliate marketing', phrase: 'affiliate marketing', finds: 'People asking how to start or grow with affiliate links, sites and commissions.' },
-  { id: 'money_making', label: 'Making money online', phrase: 'making money online', finds: 'Beginners asking how to earn online, what it costs and whether it is legit.' },
-  { id: 'work_from_home', label: 'Work-from-home business', phrase: 'work-from-home business', finds: 'People who want a home-based business: parents, retirees, career changers.' },
-  { id: 'side_hustles', label: 'Side hustles', phrase: 'side hustle', finds: 'People with a day job looking for extra income after hours.' },
-  { id: 'biz_opp', label: 'Business opportunities', phrase: 'business opportunity', finds: 'People weighing an opportunity and asking whether it is real and what it costs.' },
-  { id: 'ai_tools', label: 'AI tools and software', phrase: 'AI tools and software', finds: 'People asking which AI tool to use, what it costs and how to get started.' },
-  { id: 'traffic_leads', label: 'Getting leads and traffic', phrase: 'leads and traffic', finds: 'Business owners asking how to get leads, clients or website visitors.' },
-  { id: 'organic_traffic', label: 'Free traffic from Google (SEO)', phrase: 'free traffic from Google', finds: 'Site owners asking how to rank on Google and get visitors without ads.' },
+// Order and labels mirror server/youtube/nicheProfiles.js (Steve's approved lineup).
+// `group` drives the "Main choices" / "Explore more" split in Step 1.
+export const NICHES: Array<{ id: NicheProfile; group: NicheGroup; label: string; phrase: string; finds: string }> = [
+  { id: 'clicks_no_sales', group: 'main', label: 'Clicks but No Sales', phrase: 'clicks but no sales', finds: 'People getting clicks or traffic but no affiliate sales, asking what to fix.' },
+  { id: 'traffic_leads', group: 'main', label: 'Getting Traffic & Leads', phrase: 'traffic and leads', finds: 'People asking how to get their first leads, clients or website visitors.' },
+  { id: 'affiliate_funnels', group: 'main', label: 'Affiliate Funnels & Opt-Ins', phrase: 'affiliate funnels and opt-ins', finds: 'People setting up a funnel, opt-in page or lead magnet and asking how.' },
+  { id: 'email_follow_up', group: 'main', label: 'Email Follow-Up', phrase: 'email follow-up', finds: 'People asking how to write follow-up emails or pick an autoresponder.' },
+  { id: 'organic_traffic', group: 'main', label: 'Organic Traffic', phrase: 'organic traffic', finds: 'People asking how to rank on Google and get free visitors without ads.' },
+  { id: 'choosing_offers', group: 'main', label: 'Choosing Affiliate Offers', phrase: 'choosing affiliate offers', finds: 'People asking which offer, program or niche to promote.' },
+  { id: 'training_reviews', group: 'main', label: 'Affiliate Training Reviews', phrase: 'affiliate training', finds: 'People weighing a course or program: is it legit, worth the money?' },
+  { id: 'affiliate_marketing', group: 'main', label: 'Affiliate Marketing', phrase: 'affiliate marketing', finds: 'Beginners asking how to start or grow with affiliate links and commissions.' },
+  { id: 'ai_tools', group: 'explore', label: 'AI Tools for Marketing', phrase: 'AI tools for marketing', finds: 'People asking which AI tool to use for content and marketing work.' },
+  { id: 'biz_opp', group: 'explore', label: 'Compare Online Businesses', phrase: 'online business models', finds: 'People comparing business models and asking which to pick.' },
+  { id: 'work_from_home', group: 'explore', label: 'Home-Based Business', phrase: 'home-based business', finds: 'People who want a home-based business: parents, retirees, career changers.' },
+  { id: 'side_hustles', group: 'explore', label: 'Side Hustles & Online Income', phrase: 'side hustles and online income', finds: 'People with a day job asking for realistic extra income online.' },
+];
+
+export const NICHE_GROUPS: Array<{ key: NicheGroup; title: string }> = [
+  { key: 'main', title: 'Main choices' },
+  { key: 'explore', title: 'Explore more' },
 ];
 
 export function nicheLabel(id: NicheProfile) {
@@ -173,9 +185,14 @@ export function isRealYouTubeUrl(url: string) {
   return url.startsWith('https://www.youtube.com/') || url.startsWith('https://youtube.com/');
 }
 
+export function getOlspReview(item: ScoredFixture) {
+  return item.olspReview || olspReviewFor(item.video, item.comment);
+}
+
 export function copyBundleText(item: ScoredFixture, draftText?: string) {
   return [
     `Lead: ${typeLabels[item.score.opportunityType]}`,
+    getOlspReview(item)?.reason ? `OLSP: review (${getOlspReview(item)?.reason})` : '',
     `Lead strength: ${leadStrengthLabel(item.score.priority)} (${item.score.overallScore}/100)`,
     `Why: ${whyThisMatters(item)}`,
     `Next step: ${nextBestAction(item)}`,
@@ -194,7 +211,7 @@ function csvEscape(value: unknown) {
 
 export function exportOpportunitiesCsv(items: ScoredFixture[], statuses: Record<string, LocalStatus>) {
   const rows = [
-    ['score', 'type', 'lead_strength', 'reputation_risk', 'status', 'age', 'reason', 'low_fit_reason', 'niche', 'video', 'commenter', 'comment', 'url'],
+    ['score', 'type', 'lead_strength', 'reputation_risk', 'status', 'age', 'reason', 'low_fit_reason', 'olsp_review', 'olsp_reason', 'niche', 'video', 'commenter', 'comment', 'url'],
     ...items.map((item) => [
       item.score.overallScore,
       item.score.opportunityTypeLabel,
@@ -204,6 +221,8 @@ export function exportOpportunitiesCsv(items: ScoredFixture[], statuses: Record<
       ageLabel(item),
       item.score.summary,
       item.score.lowFitReason || '',
+      getOlspReview(item)?.flagged ? 'OLSP: review' : '',
+      getOlspReview(item)?.reason || '',
       item.score.nicheProfileLabel || '',
       item.video.title,
       item.comment.authorDisplayName,
@@ -245,11 +264,13 @@ export function normaliseImportedOpportunity(raw: any): ScoredFixture {
   const comment = raw.comment || {};
   return {
     id: raw.id,
+    olspReview: raw.olspReview || olspReviewFor(video, comment),
     video: {
       id: video.id || raw.videoId || 'imported_video',
       youtubeVideoId: video.youtubeVideoId || video.id,
       title: video.title || 'YouTube video',
       channelName: video.channelName || video.channelTitle || 'YouTube channel',
+      description: video.description || '',
       publishedAt: video.publishedAt || raw.createdAt || new Date().toISOString(),
       topic: video.topic || 'youtube_import',
       offerFit: video.offerFit || raw.detectedOfferFit || [],

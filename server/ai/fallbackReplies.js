@@ -11,15 +11,22 @@ const TOOL = /\b(which|what|best|recommend|suggest)\b.{0,35}\b(tool|software|pla
 const AFFILIATE_LINKS = /\b(affiliate links?|affiliate earnings|affiliate commissions?)\b/i;
 const REGULATED = /\b(tax(es|ation)?|legal|lawyer|medical|health|treatment|diagnos(is|e)|invest(ment|ing)|loan|insurance|mortgage|financial advice|credit score|bank account)\b/i;
 const BANK_ACCOUNT = /\b(business\s+)?bank account\b/i;
+// Keyed by nicheProfileId. Covers the current 12 profiles; `money_making` is kept so
+// older saved opportunities still get a sensible first step (folded into side hustles).
 const NICHES = {
+  clicks_no_sales: 'Check that the offer matches what your visitors actually want, confirm your links and tracking work, then look at where people drop off before changing anything else.',
+  traffic_leads: 'Start with one clear audience and offer, then test a single way to bring that audience to a simple page.',
+  affiliate_funnels: 'Start with one specific offer and a simple opt-in page that gives something useful, then send that traffic to one clear next step.',
+  email_follow_up: 'Write one helpful welcome email first, then plan a short follow-up that answers common questions before it mentions any offer.',
+  organic_traffic: 'Start with one question your audience searches for, write a clear answer and watch whether it attracts the right visitors.',
+  choosing_offers: 'Match the offer to a problem your audience already has, then check the commission, cookie window and refund rate before you promote it.',
+  training_reviews: 'Check exactly what the program includes, the total cost and the refund terms, and look for independent reviews before paying.',
   affiliate_marketing: 'Choose a topic you can explain clearly, then compare reputable programs and create useful content before expecting clicks.',
-  money_making: 'Choose one method that matches your available time and skills, then check its startup costs before paying for anything.',
+  ai_tools: 'Pick one specific task to test, compare a tool on sample work and check its limits before paying.',
+  biz_opp: 'List the startup cost, skills and time each model needs, then compare them against what you can realistically commit before choosing one.',
   work_from_home: 'Choose one service or product you could deliver from home and list the costs and work needed for a small first test.',
   side_hustles: 'Pick one option you can test around your current schedule, then track the hours and expenses before scaling up.',
-  biz_opp: 'Check what the business actually sells, the upfront fees and the cancellation terms before committing.',
-  ai_tools: 'Pick one specific task to test, compare a tool on sample work and check its limits before paying.',
-  traffic_leads: 'Start with one clear audience and offer, then test a single way to bring that audience to a simple page.',
-  organic_traffic: 'Start with one question your audience searches for, write a clear answer and watch whether it attracts the right visitors.',
+  money_making: 'Pick one method that matches your available time and skills, then check its startup costs before paying for anything.',
 };
 
 function nameFor(text) {

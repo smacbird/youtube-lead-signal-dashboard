@@ -806,6 +806,8 @@ h2[tabindex="-1"]:focus { outline: none; }
 .niche-grid, .preset-grid { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .preset-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .preset-grid legend { color: var(--muted); font-size: 0.9rem; margin-bottom: 8px; padding: 0; }
+.niche-group-label { grid-column: 1 / -1; margin: 6px 0 0; font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.niche-group-label:first-of-type { margin-top: 0; }
 .niche-card, .preset-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 18px; border: 1px solid var(--line); background: rgba(248, 241, 223, 0.04); cursor: pointer; }
 .niche-card .choice-description, .preset-card .choice-description { display: block; color: var(--muted); font-size: 0.9rem; line-height: 1.5; font-weight: 400; text-transform: none; letter-spacing: normal; max-width: 34ch; }
 .preset-card small { color: var(--gold); font-size: 0.8rem; }
@@ -1148,3 +1150,7 @@ html, body { overflow-x: hidden; }
   border-color: #f6c85f;
   color: #fff0be;
 }
+
+/* Review-only market intelligence warning: never changes rank or score styling. */
+.olsp-review-warning { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; margin: 10px 0; padding: 10px 12px; border: 2px solid #f4b65b; border-radius: 10px; color: #ffe8bd; background: rgba(142, 69, 11, .35); font-size: .88rem; line-height: 1.4; overflow-wrap: anywhere; }
+.olsp-review-warning strong { color: #fff0cd; font-weight: 800; }

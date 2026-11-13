@@ -1,5 +1,5 @@
 import React from 'react';
-import { ageLabel, isNoise, leadStrengthLabel, riskLabel, situationDetails, statusLabels, tabInfo, typeLabels } from './helpers';
+import { ageLabel, getOlspReview, isNoise, leadStrengthLabel, riskLabel, situationDetails, statusLabels, tabInfo, typeLabels } from './helpers';
 import type { FreshnessWindow, LocalStatus, ReviewTab, ScoredFixture } from './types';
 
 export function ReviewTabs({ tabs, active, counts, onChange }: { tabs: ReviewTab[]; active: ReviewTab; counts: Record<ReviewTab, number>; onChange: (tab: ReviewTab) => void }) {
@@ -55,6 +55,7 @@ export function AgeFilter({ value, onChange }: { value: FreshnessWindow; onChang
 }
 
 export function LeadCard({ item, status, selected, onSelect }: { item: ScoredFixture; status: LocalStatus; selected: boolean; onSelect: () => void }) {
+  const olsp = getOlspReview(item);
   const noise = isNoise(item) || item.score.opportunityType === 'low_fit_comment';
   const details = situationDetails(item);
   const days = new Date(item.comment.publishedAt).getTime();
@@ -76,6 +77,7 @@ export function LeadCard({ item, status, selected, onSelect }: { item: ScoredFix
             <span className={`risk ${item.score.riskLevel}`}>Reputation risk: {riskLabel(item.score.riskLevel)}</span>
           </span>
         </span>
+        {olsp && <span className="olsp-review-warning" role="note"><strong>OLSP: review</strong><span>{olsp.reason}</span></span>}
         <span className={noise ? 'card-reason low-fit-reason' : 'card-reason'}>{noise ? `Not a fit: ${shortReason}` : shortReason}</span>
         {details.length > 0 && (
           <span className="situation-row">

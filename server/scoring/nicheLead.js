@@ -1,7 +1,7 @@
 // Niche-lead scoring for niche scans (imports that carry a profileId).
 // Manual URL imports keep using src/scoring/scoring.js unchanged.
 import { RISK_KEYWORDS } from '../../src/scoring/scoring.js';
-import { NICHE_PROFILES, resolveNicheProfile } from '../youtube/nicheProfiles.js';
+import { resolveNicheProfile } from '../youtube/nicheProfiles.js';
 
 export const NICHE_LEAD_TYPE_LABELS = {
   niche_lead: 'Niche lead',
@@ -16,6 +16,7 @@ export const LOW_FIT_REASONS = {
   praise_only: 'Praise or thanks only',
   greeting_only: 'Greeting only',
   too_short: 'Too short to judge',
+  remote_job_request: 'Wants a work-from-home job, not an affiliate or business opportunity',
   generic_question: 'Question with no niche, cost, start or legitimacy signal',
   off_topic: 'Off-topic: no question, need or niche signal',
 };
@@ -87,6 +88,8 @@ const POSITIVE_SIGNALS = [
     patterns: [
       /\bi\s+(have|got)\s+no\s+[a-z]+(\s+[a-z]+)?/,
       /\bi\s+(don'?t|do not|dont)\s+have\s+(a|any|much)\s+[a-z]+/,
+      // Describes an asset they already run (audience/list/page/channel): concrete reply context.
+      /\bi\s+(have|run|built|got|started|manage)\s+(a|an|my|some|small|new|tiny|growing|little|about|around|over|only|just|\d[\d,]*)\s+([a-z0-9-]+\s+){0,3}?(audience|following|email list|list|subscribers?|blog|channel|website|store|shop|page)\b/,
       /\bno\s+(experience|website|money|budget|skills|audience|followers|degree|capital|savings)\b/,
       /\bzero\s+experience\b/,
       /\bnew\s+to\s+(this|it|\w+)\b/,
@@ -120,24 +123,29 @@ const POSITIVE_SIGNALS = [
       /\b(can|could)\s+(you|someone|anyone)\s+(help|guide|point|explain|show)\b/,
       /\b(need|want)\s+(help|advice|guidance|a mentor)\b/,
       /\bwhat\s+would\s+you\s+(do|suggest)\b/,
+      // Concrete next-step asks: "what should I send/change after they opt in?"
+      /\bwhat\s+(should|do|can)\s+i\s+(send|write|post|say|change|fix|improve|do|try|use|include|focus on)\b/,
+      // "which affiliate offer/program/tool..." with an adjective between (which + <words> + noun).
+      /\bwhich\s+([a-z0-9-]+\s+){0,2}(offer|program|tool|platform|product|niche|course|service|software|app|funnel|autoresponder|affiliate)\b/,
     ],
   },
 ];
 
 const CREATOR_VIDEO_REQUEST = /\b(?:can\s+you|could\s+you|would\s+you|please|do|make|create|post)\b.{0,45}\b(?:make|create|do|post)?\s*(?:a|another|more)?\s*(?:video|tutorial|walkthrough)\b(?:\s+(?:on|about|for))?/;
-const CROSS_NICHE_GENERIC = new Set(['beginner', 'legit', 'scam', 'startup', 'investment', 'software', 'traffic', 'worth it', 'profit', 'automation']);
 
-function differentBusiness(profileId, text, currentMatches) {
-  if (profileId !== 'biz_opp' && /\b(?:amazon\s+fba|fba\s+inventory|fba)\b/.test(text)) return 'FBA';
-  if (profileId !== 'biz_opp' && /\bdropship(?:ping)?\b/.test(text)) return 'dropshipping';
-  if (currentMatches.length) return null;
-  for (const [id, profile] of Object.entries(NICHE_PROFILES)) {
-    if (id === profileId) continue;
-    const match = (profile.keywords || []).find((keyword) => keyword.length >= 8 && !CROSS_NICHE_GENERIC.has(keyword) && phraseRegex(keyword).test(text));
-    if (match) return profile.label;
-  }
+// Only flag genuinely different BUSINESS MODELS, not sibling affiliate sub-topics
+// (funnels, email, offers, training all share the same affiliate business). The
+// "Compare Online Businesses" profile is where FBA/dropshipping are on-topic.
+function differentBusiness(profileId, text) {
+  if (profileId === 'biz_opp') return null;
+  if (/\b(?:amazon\s+fba|fba\s+inventory|fba)\b/.test(text)) return 'FBA';
+  if (/\bdropship(?:ping)?\b/.test(text)) return 'dropshipping';
   return null;
 }
+
+// People asking for a remote JOB (hiring, apply, resume) are not affiliate/business
+// prospects. Scoped to employment language so "I want to start a home business" is unaffected.
+const REMOTE_JOB_REQUEST = /\b(are you hiring|is this (a |an )?(real )?job|i (just )?need a job|looking for (a |work[- ]from[- ]home )job|need a remote job|work[- ]from[- ]home job|remote job|any jobs\b|job opening|positions? available|hiring remote|send (you )?my (resume|cv)|hire me|apply for (this |a |the )?(job|position|role|opening)|how (do|can) i apply for)\b/;
 
 const QUESTION_START = /^(how|what|where|which|who|why|when|is|are|can|could|does|do|did|should|would|will|anyone|any)\b/;
 
@@ -242,7 +250,8 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
   const nicheMatched = nicheKeywordMatches(profileId, lower);
   const nicheBoost = Math.min(3, nicheMatched.length) * 8;
   const creatorVideoRequest = CREATOR_VIDEO_REQUEST.test(lower);
-  const otherBusiness = differentBusiness(profileId, lower, nicheMatched);
+  const otherBusiness = differentBusiness(profileId, lower);
+  const remoteJobMatch = firstMatch(lower, [REMOTE_JOB_REQUEST]);
 
   const riskMatches = RISK_REGEXES.filter(({ regex }) => regex.test(`${String(authorDisplayName).toLowerCase()} ${lower}`)).map(({ keyword }) => keyword);
   const selfPromoMatch = firstMatch(lower, SELF_PROMO_PATTERNS);
@@ -263,6 +272,9 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
   else if (selfPromoMatch) { lowFitReason = 'self_promotion'; lowFitDetail = selfPromoMatch; }
   else if (isChannelOwner) lowFitReason = 'channel_owner';
   else if (housekeepingMatch && intentSum < 24) { lowFitReason = 'video_housekeeping'; lowFitDetail = housekeepingMatch; }
+  // A job seeker ("start a remote job, where do I apply?") can carry start-intent, so gate
+  // on the absence of any business/niche keyword rather than on intent strength.
+  else if (remoteJobMatch && !nicheMatched.length) { lowFitReason = 'remote_job_request'; lowFitDetail = remoteJobMatch; }
   else if (isGreeting && !intentSum) lowFitReason = 'greeting_only';
   else if (isPraise && !intentSum && !hasQuestion) lowFitReason = 'praise_only';
   else if (words < 3 && !intentSum) lowFitReason = 'too_short';

@@ -8,7 +8,12 @@ import type { AppSettings, NicheProfile, ScanSummary, ScoredFixture } from './ty
 
 export type ScanResult = { items: ScoredFixture[]; summary: ScanSummary; nicheScan: boolean; runId?: string };
 
-const QUERIES_PER_NICHE: Record<string, number> = { affiliate_marketing: 6, money_making: 6, work_from_home: 6, side_hustles: 5, biz_opp: 6, ai_tools: 5, traffic_leads: 5, organic_traffic: 5 };
+// Query-bundle sizes mirror server/youtube/nicheProfiles.js so the quota estimate is honest.
+const QUERIES_PER_NICHE: Record<string, number> = {
+  clicks_no_sales: 6, traffic_leads: 5, affiliate_funnels: 5, email_follow_up: 5,
+  organic_traffic: 5, choosing_offers: 5, training_reviews: 5, affiliate_marketing: 6,
+  ai_tools: 5, biz_opp: 5, work_from_home: 5, side_hustles: 5,
+};
 
 export function ScanPanel({ niche, settings, options, onOptionsChange, onOpenOptions, onResult, onHealthChange, hasResults }: {
   niche: NicheProfile;
