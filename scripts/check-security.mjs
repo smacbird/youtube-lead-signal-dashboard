@@ -6,6 +6,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JsonImportStore, createEmptyStore } from '../server/persistence/store.js';
 import { createAuth } from '../server/auth.js';
+import { SHEETS_CREATE_URL, sheetsValuesWriteUrl } from '../src/ui/sheetPayload.js';
+
+// CSP source paths without a trailing slash match exactly; with a slash they
+// match a subpath. Check the actual header against the app's actual URLs.
+function cspAllowsConnect(csp, url) {
+  const directive = csp.split(';').map((part) => part.trim()).find((part) => part.startsWith('connect-src '));
+  const target = new URL(url);
+  return Boolean(directive?.split(/\s+/).slice(1).some((source) => {
+    if (!source.startsWith('https://')) return false;
+    const allowed = new URL(source);
+    return allowed.origin === target.origin && (allowed.pathname.endsWith('/')
+      ? target.pathname.startsWith(allowed.pathname) : target.pathname === allowed.pathname);
+  }));
+}
 
 const tempDir = await mkdtemp(join(tmpdir(), 'bls-security-'));
 const storePath = join(tempDir, 'store.json');
@@ -94,7 +108,12 @@ try {
     assert.equal(loginPage.headers.get('referrer-policy'), 'same-origin', 'browsers must still send a real Origin on form posts');
     const csp = loginPage.headers.get('content-security-policy');
     assert.match(csp, /script-src 'self' https:\/\/accounts\.google\.com\/gsi\/client/);
-    assert.match(csp, /connect-src 'self' https:\/\/accounts\.google\.com\/gsi\/ https:\/\/sheets\.googleapis\.com\/v4\/spreadsheets/);
+    assert.match(csp, /connect-src 'self' https:\/\/accounts\.google\.com\/gsi\/ https:\/\/sheets\.googleapis\.com\/v4\/spreadsheets https:\/\/sheets\.googleapis\.com\/v4\/spreadsheets\//);
+    assert.equal(cspAllowsConnect(csp, SHEETS_CREATE_URL), true, 'CSP allows the exact spreadsheet-create endpoint');
+    assert.equal(cspAllowsConnect(csp, sheetsValuesWriteUrl('spreadsheet_id_123456')), true, 'CSP allows the actual values/write endpoint');
+    assert.equal(cspAllowsConnect(csp, 'https://sheets.googleapis.com/v4/spreadsheetsOther'), false, 'CSP does not allow sibling API paths');
+    assert.equal(cspAllowsConnect(csp, 'https://sheets.googleapis.com/v4/drive'), false, 'CSP does not allow other Google APIs');
+    assert.equal(cspAllowsConnect(csp, 'https://evil.example/v4/spreadsheets/a/values/Leads!A1'), false, 'CSP is host-scoped');
     assert.match(csp, /frame-src https:\/\/accounts\.google\.com\/gsi\//);
     for (const directive of ["default-src 'self'", "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'", "form-action 'self'"]) assert.ok(csp.includes(directive));
     assert.equal(loginPage.headers.get('cross-origin-opener-policy'), 'same-origin-allow-popups');

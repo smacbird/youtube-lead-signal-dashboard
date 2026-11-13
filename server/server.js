@@ -115,7 +115,7 @@ async function handle(request, response) {
   response.setHeader('x-content-type-options', 'nosniff');
   response.setHeader('referrer-policy', 'same-origin');
   response.setHeader('content-security-policy', "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
-    + (googleClientId ? "; script-src 'self' https://accounts.google.com/gsi/client; connect-src 'self' https://accounts.google.com/gsi/ https://sheets.googleapis.com/v4/spreadsheets; frame-src https://accounts.google.com/gsi/; style-src 'self' https://accounts.google.com/gsi/style" : ''));
+    + (googleClientId ? "; script-src 'self' https://accounts.google.com/gsi/client; connect-src 'self' https://accounts.google.com/gsi/ https://sheets.googleapis.com/v4/spreadsheets https://sheets.googleapis.com/v4/spreadsheets/; frame-src https://accounts.google.com/gsi/; style-src 'self' https://accounts.google.com/gsi/style" : ''));
   if (googleClientId) response.setHeader('cross-origin-opener-policy', 'same-origin-allow-popups');
 
   try {

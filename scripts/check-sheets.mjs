@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { safeSheetCell, sheetRows, spreadsheetTitle, sheetExportStage, SHEET_HEADERS } from '../src/ui/sheetPayload.js';
+import { safeSheetCell, sheetRows, spreadsheetTitle, sheetExportStage, SHEET_HEADERS, SHEETS_CREATE_URL, sheetsValuesWriteUrl } from '../src/ui/sheetPayload.js';
 
 for (const value of ['=IMPORTXML("https://evil.example")', ' +SUM(1,2)', '-1+2', '@cmd']) {
   assert.ok(safeSheetCell(value).startsWith("'"), `${value} cannot become a spreadsheet formula`);
@@ -28,4 +28,6 @@ assert.equal(sheetExportStage({ clientId: null, count: 1, gisReady: false }), 'n
 assert.equal(sheetExportStage({ clientId: 'public-id', count: 0, gisReady: false }), 'empty');
 assert.equal(sheetExportStage({ clientId: 'public-id', count: 1, gisReady: false }), 'load_gis');
 assert.equal(sheetExportStage({ clientId: 'public-id', count: 1, gisReady: true }), 'authorize');
+assert.equal(SHEETS_CREATE_URL, 'https://sheets.googleapis.com/v4/spreadsheets');
+assert.equal(sheetsValuesWriteUrl('spreadsheet_id_123456'), 'https://sheets.googleapis.com/v4/spreadsheets/spreadsheet_id_123456/values/Leads!A1?valueInputOption=RAW');
 console.log('Sheets payload checks passed: quoted cells, current filtered rows, title, click-only authorization stages.');

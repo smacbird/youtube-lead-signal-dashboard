@@ -1,5 +1,10 @@
 // Pure Sheets payload helpers. RAW values plus formula-prefix escaping prevent
 // comment text such as =IMPORTXML(...) from becoming a spreadsheet formula.
+export const SHEETS_CREATE_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
+export function sheetsValuesWriteUrl(id) {
+  return `${SHEETS_CREATE_URL}/${encodeURIComponent(id)}/values/${encodeURIComponent('Leads!A1')}?valueInputOption=RAW`;
+}
+
 export const SHEET_HEADERS = [
   'Score', 'Type', 'Lead strength', 'Reputation risk', 'Status', 'Video',
   'Commenter', 'Comment', 'Why', 'Niche', 'Comment URL',

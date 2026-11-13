@@ -1,8 +1,7 @@
-import { sheetExportStage, sheetRows, spreadsheetTitle } from './sheetPayload.js';
+import { SHEETS_CREATE_URL, sheetsValuesWriteUrl, sheetExportStage, sheetRows, spreadsheetTitle } from './sheetPayload.js';
 import type { ScoredFixture, LocalStatus } from './types';
 
 const GIS_SCRIPT = 'https://accounts.google.com/gsi/client';
-const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 let gisLoad: Promise<void> | null = null;
 
@@ -97,13 +96,13 @@ export async function exportFilteredToGoogleSheets(items: ScoredFixture[], statu
   const token = await requestToken(clientId!);
   // RAW means Google does not parse formulas; safeSheetCell adds an extra guard.
   const rows = sheetRows(items, statuses);
-  const created = await sheetsRequest(SHEETS_API, 'POST', token, {
+  const created = await sheetsRequest(SHEETS_CREATE_URL, 'POST', token, {
     properties: { title: spreadsheetTitle() }, sheets: [{ properties: { title: 'Leads' } }],
   });
   const id = created?.spreadsheetId;
   if (typeof id !== 'string' || !/^[\w-]{10,}$/.test(id)) throw new Error('Google created a sheet but did not return its id. Check Google Sheets directly.');
   const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/edit`;
-  const path = `${SHEETS_API}/${encodeURIComponent(id)}/values/${encodeURIComponent('Leads!A1')}?valueInputOption=RAW`;
+  const path = sheetsValuesWriteUrl(id);
   try {
     await sheetsRequest(path, 'PUT', token, { range: 'Leads!A1', majorDimension: 'ROWS', values: rows });
     return { kind: 'created' as const, url, count: items.length, message: `Created a Google Sheet with ${items.length} filtered comment${items.length === 1 ? '' : 's'}.` };
