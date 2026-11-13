@@ -118,7 +118,7 @@ export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, opt
     // Refresh each time the dialog opens so new scans appear; on phones close the drop-down menu
     // so it never sits behind the dialog.
     if (next === 'saved') listPrevious();
-    if (next === 'saved' || next === 'advanced') onMobileClose();
+    if (next === 'saved' || next === 'advanced' || next === 'options') onMobileClose();
   }
 
   const savedCount = previousScans?.length || 0;
@@ -150,7 +150,7 @@ export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, opt
           }
           const id = entry.id;
           const open = openPanel === id;
-          const isModal = id === 'saved' || id === 'advanced';
+          const isModal = id === 'saved' || id === 'advanced' || id === 'options';
           return (
             <li key={id}>
               <button type="button" className={open ? 'sidebar-item selected' : 'sidebar-item'}
@@ -160,25 +160,6 @@ export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, opt
                 {id === 'saved' && savedCount > 0 && <span className="sidebar-count" aria-label={`${savedCount} saved scans`}>{savedCount}</span>}
                 <span className="sidebar-caret" aria-hidden="true">{isModal ? '›' : open ? '−' : '+'}</span>
               </button>
-              {open && id === 'options' && (
-                <div id="sidebar-panel-options" className="sidebar-panel" role="region" aria-label={entry.label}>
-                  <div className="sidebar-options">
-                    <label className="sidebar-field">
-                      <span>Video age</span>
-                      <select value={options.daysBack} onChange={(event) => onOptionsChange(withDaysBack(options, Number(event.target.value)))}>
-                        {VIDEO_AGE_CHOICES.map((days) => <option key={days} value={days}>Last {days} days{days === 30 ? ' (recommended)' : ''}</option>)}
-                      </select>
-                      <small>Videos need a few days to collect comments, so 30 days usually finds the most people.</small>
-                    </label>
-                    <label className="sidebar-field">
-                      <span>Most comments to read</span>
-                      <input type="number" min={MIN_COMMENTS} max={MAX_COMMENTS} value={options.commentCap}
-                        onChange={(event) => onOptionsChange(withCommentCap(options, Number(event.target.value)))} />
-                      <small>Shared evenly across the videos. {MAX_COMMENTS} is the most one scan can read. Changing the scan size resets this to {presetFor(options).comments}.</small>
-                    </label>
-                  </div>
-                </div>
-              )}
             </li>
           );
         })}
@@ -210,6 +191,28 @@ export function Sidebar({ openPanel, onOpenPanel, mobileOpen, onMobileClose, opt
           })}
         </ul>
       ) : <p className="workflow-note">{previousScans ? 'No saved scans yet.' : 'Loading…'}</p>}
+    </Modal>
+
+    <Modal open={openPanel === 'options'} title="More options" onClose={() => onOpenPanel(null)} wide>
+      <p className="workflow-note">These apply to your next scan.</p>
+                  <div className="sidebar-options modal-options">
+                    <label className="sidebar-field">
+                      <span>Video age</span>
+                      <select value={options.daysBack} onChange={(event) => onOptionsChange(withDaysBack(options, Number(event.target.value)))}>
+                        {VIDEO_AGE_CHOICES.map((days) => <option key={days} value={days}>Last {days} days{days === 30 ? ' (recommended)' : ''}</option>)}
+                      </select>
+                      <small>Videos need a few days to collect comments, so 30 days usually finds the most people.</small>
+                    </label>
+                    <label className="sidebar-field">
+                      <span>Most comments to read</span>
+                      <input type="number" min={MIN_COMMENTS} max={MAX_COMMENTS} value={options.commentCap}
+                        onChange={(event) => onOptionsChange(withCommentCap(options, Number(event.target.value)))} />
+                      <small>Shared evenly across the videos. {MAX_COMMENTS} is the most one scan can read. Changing the scan size resets this to {presetFor(options).comments}.</small>
+                    </label>
+                  </div>
+      <div className="approval-hooks modal-actions">
+        <button type="button" onClick={() => onOpenPanel(null)}>Done</button>
+      </div>
     </Modal>
 
     <Modal open={openPanel === 'advanced'} title="Scan specific videos" onClose={() => onOpenPanel(null)}>
