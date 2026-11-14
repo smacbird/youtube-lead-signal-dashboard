@@ -1,8 +1,18 @@
 import { importYouTubeVideos } from '../import/importService.js';
 import { buildRunSummary } from '../import/runSummary.js';
+import { summarizeCandidateSelection } from './candidateDiagnostics.js';
 import { RUN_RESULT_LIMIT } from '../persistence/store.js';
 import { resolveNicheProfile } from '../youtube/nicheProfiles.js';
 import { selectNicheVideos } from '../youtube/videoRanking.js';
+
+// A healthy search with no eligible videos is a valid zero-result scan, not an
+// API failure. Preserve errors from failed search/metadata requests as HTTP 400.
+export function nicheScanResponseStatus(result) {
+  if (result.run.status !== 'failed' || result.videosFound.length) return 200;
+  const expected = new Set(['no_search_candidates', 'no_eligible_affiliate_videos']);
+  return result.profileId === 'clicks_no_sales'
+    && result.searchErrors.length === 1 && expected.has(result.searchErrors[0].code) ? 200 : 400;
+}
 
 export function formatScanTitle({ profileLabel, daysBack, maxVideos, commentsFetched, startedAt }) {
   const date = new Date(startedAt || Date.now()).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
@@ -31,6 +41,7 @@ export async function scanNiche({ body, store, youtubeClient }) {
   const publishedAfter = daysAgoIso(daysBack);
   const selection = await selectNicheVideos({ youtubeClient, queries, maxVideos, publishedAfter, order: body.order || 'relevance', profileId });
   const found = selection.videos;
+  const candidateDiagnostics = summarizeCandidateSelection(selection);
   const { searchErrors, estimatedSearchQuotaUnits, estimatedRankingQuotaUnits } = selection;
 
   const run = await importYouTubeVideos({
@@ -48,14 +59,23 @@ export async function scanNiche({ body, store, youtubeClient }) {
     videoItems: selection.videoItems,
     metadata: { scanType: 'niche', profileId, profileLabel: profile.label, queries, daysBack, maxVideos, order: body.order || 'relevance', profileId, profileLabel: profile.label },
   });
+  // No eligible videos after a healthy search is a completed zero-result scan.
+  // The importer creates the run, but its empty-input error is not a user error.
+  const expectedEmpty = !found.length && searchErrors.length === 1
+    && ['no_search_candidates', 'no_eligible_affiliate_videos'].includes(searchErrors[0].code);
+  if (expectedEmpty) {
+    run.status = 'succeeded';
+    run.errors = run.errors.filter((error) => error.code !== 'no_valid_video_ids');
+  }
   run.estimatedQuotaUnits += estimatedSearchQuotaUnits + estimatedRankingQuotaUnits;
+  run.candidateDiagnostics = candidateDiagnostics;
   run.title = formatScanTitle({ profileLabel: profile.label, daysBack, maxVideos, commentsFetched: run.commentsFetched, startedAt: run.startedAt });
   for (const error of searchErrors) run.errors.push(error);
   // importYouTubeVideos already saved the run; save the scan-level additions too so Previous Scans
   // shows the full quota, title and search errors.
   await store.mutate((state) => {
     const saved = state.importRuns[run.id];
-    if (saved) Object.assign(saved, { estimatedQuotaUnits: run.estimatedQuotaUnits, title: run.title, errors: run.errors });
+    if (saved) Object.assign(saved, { estimatedQuotaUnits: run.estimatedQuotaUnits, title: run.title, errors: run.errors, status: run.status, candidateDiagnostics });
   });
 
   // Results for THIS scan only, looked up by the run's own opportunity ids (not a store-wide top-N).
@@ -70,6 +90,7 @@ export async function scanNiche({ body, store, youtubeClient }) {
     daysBack,
     videosFound: found,
     candidatesConsidered: selection.candidatesConsidered,
+    candidateDiagnostics,
     droppedVideos: selection.droppedVideos,
     rankedByComments: selection.rankedByComments,
     estimatedSearchQuotaUnits,

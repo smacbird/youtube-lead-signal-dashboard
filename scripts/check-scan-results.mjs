@@ -1,14 +1,17 @@
 // Scan result completeness and fair comment budget. Offline: mock YouTube client, temp store.
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JsonImportStore, createEmptyStore } from '../server/persistence/store.js';
-import { scanNiche } from '../server/scan/scanNiche.js';
+import { nicheScanResponseStatus, scanNiche } from '../server/scan/scanNiche.js';
+import { summarizeCandidateSelection } from '../server/scan/candidateDiagnostics.js';
 import { importYouTubeVideos } from '../server/import/importService.js';
 import { buildRunSummary } from '../server/import/runSummary.js';
 import { leadBucket, bucketCounts } from '../src/scoring/leadBuckets.js';
 import { estimateScanQuota, SCAN_PRESETS } from '../src/ui/scanPresets.js';
+import { buildScanSummary } from '../src/ui/helpers.ts';
+import { rankCandidateVideos } from '../server/youtube/videoRanking.js';
 
 const NOISE = ['Thnx for help', 'Wrong title', "I can't find the link", 'Great video!', 'First!', 'lol', 'Nice', 'God bless you'];
 const LEADS = ["I'm a stay at home mom with no experience, how do I get started?", 'Is this legit? How much does it cost to start?'];
@@ -47,6 +50,33 @@ function mockClient(commentsByVideo, { leadsPerVideo = 1, disabledIds = [] } = {
     },
   };
 }
+
+// Compact accounting includes every dropped candidate, but never entire metadata
+// or commenters; titles are capped and React will render them as ordinary text.
+const diagnosticFixture = summarizeCandidateSelection({
+  candidatesConsidered: 7,
+  videos: [{ id: 'selected' }],
+  droppedVideos: [
+    ...Array.from({ length: 4 }, (_, i) => ({ reason: 'off_topic', title: i === 0 ? '<script>alert(1)</script>' : `Off topic ${i}`, commenter: 'private commenter' })),
+    { reason: 'too_few_comments', title: 'A'.repeat(300) },
+    { reason: 'ranked_below_cutoff', title: 'Qualified but below limit' },
+  ],
+});
+assert.deepEqual([diagnosticFixture.considered, diagnosticFixture.selected, diagnosticFixture.dropped], [7, 1, 6]);
+assert.deepEqual(diagnosticFixture.reasons.map(({ reason, count }) => [reason, count]), [['off_topic', 4], ['too_few_comments', 1], ['ranked_below_cutoff', 1]]);
+assert.equal(diagnosticFixture.reasons[0].titles.length, 3, 'no more than three sample titles per reason');
+assert.equal(diagnosticFixture.reasons[1].titles[0].length, 140, 'saved titles are bounded');
+assert.equal(diagnosticFixture.reasons[0].titles[0], '<script>alert(1)</script>', 'title is text, not HTML markup');
+assert.ok(!JSON.stringify(diagnosticFixture).includes('private commenter'), 'never store commenter fields in diagnostics');
+assert.equal(summarizeCandidateSelection({ candidatesConsidered: 0, videos: [], droppedVideos: [] }).dropped, 0, 'zero candidates are recorded, not missing');
+assert.throws(() => summarizeCandidateSelection({ candidatesConsidered: 2, videos: [], droppedVideos: [] }), /candidate_accounting_mismatch/, 'no silent missing candidate counts');
+const manyReasons = summarizeCandidateSelection({ candidatesConsidered: 20, videos: [], droppedVideos: Array.from({ length: 20 }, (_, i) => ({ reason: `reason_${i}`, title: `Example ${i}` })) });
+assert.ok(manyReasons.reasons.length <= 9, 'run-level groups remain bounded');
+assert.equal(manyReasons.reasons.reduce((sum, group) => sum + group.count, 0), 20, 'overflow still counted');
+const noStatsCandidates = Array.from({ length: 4 }, (_, i) => ({ id: `v${i}`, title: `Video ${i}` }));
+const noStatsRanking = rankCandidateVideos(noStatsCandidates, null, { maxVideos: 2, profileId: 'work_from_home' });
+assert.deepEqual(noStatsRanking.selected.map(({ id }) => id), ['v0', 'v1'], 'other-profile search-order fallback unchanged');
+assert.deepEqual(noStatsRanking.dropped.map(({ reason }) => reason), ['search_order_limit', 'search_order_limit'], 'unselected fallback candidates accounted for');
 
 const tempDir = await mkdtemp(join(tmpdir(), 'scan-results-'));
 try {
@@ -93,6 +123,66 @@ try {
     assert.equal(reloaded.items.length, 100);
     assert.equal(reloaded.run.estimatedQuotaUnits, result.run.estimatedQuotaUnits, 'scan-level quota persisted');
     assert.ok(reloaded.run.title, 'scan title persisted');
+  }
+
+  // A niche scan persists bounded candidate diagnostics even with zero readable
+  // comments; reopening the run uses those exact counts without another API call.
+  {
+    const store = new JsonImportStore({ filePath: join(tempDir, 'diagnostics-store.json') });
+    const candidates = [
+      [vid(71), 'Affiliate links get clicks but no sales', 3],
+      [vid(72), 'Improve affiliate conversion rate', 5],
+      [vid(73), 'Affiliate links not converting: zero commissions', 3],
+      [vid(74), 'Affiliate sales funnel conversion rate', 5],
+      [vid(75), 'Why Your Affiliate Links Get No Clicks (The Fix)', 9000],
+      [vid(76), 'Affiliate links not converting', 2],
+    ];
+    const calls = { searches: 0, videos: 0, comments: 0 };
+    const client = {
+      async searchVideos() { calls.searches += 1; return { items: candidates.map(([id, title]) => ({ id: { videoId: id }, snippet: { title } })) }; },
+      async listVideos(ids) {
+        calls.videos += 1;
+        return { items: ids.map((id) => { const row = candidates.find(([candidateId]) => candidateId === id); return { id, snippet: { title: row[1] }, statistics: { commentCount: String(row[2]) } }; }) };
+      },
+      async listCommentThreads() { calls.comments += 1; return { items: [] }; },
+    };
+    const result = await scanNiche({ body: { profileId: 'clicks_no_sales', queries: ['affiliate conversion'], maxVideos: 3, maxCommentsPerRun: 25 }, store, youtubeClient: client });
+    const diag = result.summary.candidateDiagnostics;
+    assert.deepEqual([diag.considered, diag.selected, diag.dropped], [6, 3, 3]);
+    assert.deepEqual(diag.reasons.map(({ reason, count }) => [reason, count]), [['off_topic', 1], ['too_few_comments', 1], ['ranked_below_cutoff', 1]]);
+    assert.equal(diag.reasons.reduce((sum, group) => sum + group.count, 0) + diag.selected, diag.considered);
+    assert.deepEqual(calls, { searches: 1, videos: 1, comments: 3 }, 'diagnostics add no YouTube calls');
+    assert.equal(result.run.estimatedQuotaUnits, 104, 'quota remains search + one metadata lookup + selected comment pages');
+    const beforeRead = await readFile(store.filePath, 'utf8');
+    const saved = await store.listOpportunitiesForRun(result.run.id);
+    assert.deepEqual(saved.run.candidateDiagnostics, diag, 'small diagnostics persisted on the run');
+    assert.deepEqual(buildScanSummary('previous', [], { run: saved.run, summary: buildRunSummary(saved.run, saved.items) }).candidateDiagnostics, diag, 'saved-scan UI recovers diagnostic counts');
+    assert.equal(await readFile(store.filePath, 'utf8'), beforeRead, 'opening saved run does not rewrite history');
+  }
+
+  // A no-qualified-video scan reports zero and its drop reason, not fabricated
+  // zero counts or a generic importer error; no comment pages are requested.
+  {
+    const store = new JsonImportStore({ filePath: join(tempDir, 'empty-diagnostics-store.json') });
+    const client = {
+      async searchVideos() { return { items: [{ id: { videoId: vid(81) }, snippet: { title: 'Why Your Affiliate Links Get No Clicks (The Fix)' } }] }; },
+      async listVideos() { return { items: [{ id: vid(81), snippet: { title: 'Why Your Affiliate Links Get No Clicks (The Fix)' }, statistics: { commentCount: '9000' } }] }; },
+      async listCommentThreads() { throw new Error('no comments should be requested'); },
+    };
+    const result = await scanNiche({ body: { profileId: 'clicks_no_sales', queries: ['affiliate conversion'], maxVideos: 1 }, store, youtubeClient: client });
+    assert.deepEqual(result.summary.candidateDiagnostics, { considered: 1, selected: 0, dropped: 1, reasons: [{ reason: 'off_topic', count: 1, titles: ['Why Your Affiliate Links Get No Clicks (The Fix)'] }] });
+    assert.equal(nicheScanResponseStatus(result), 200, 'expected zero-result scan renders diagnostics rather than a generic error');
+    assert.equal(result.run.status, 'succeeded', 'healthy search with no qualified videos is not mislabelled Failed');
+    assert.ok(!result.run.errors.some(({ code }) => code === 'no_valid_video_ids'), 'empty importer detail does not masquerade as scan error');
+    const saved = await store.listOpportunitiesForRun(result.run.id);
+    assert.deepEqual(saved.run.candidateDiagnostics, result.summary.candidateDiagnostics);
+    assert.equal(saved.run.status, 'succeeded', 'saved empty scan shows Finished');
+    assert.equal(buildScanSummary('previous', [], { run: saved.run, summary: buildRunSummary(saved.run, []) }).candidateDiagnostics?.selected, 0, 'saved zero is distinct from not recorded');
+    const oldRun = { metadata: { scanType: 'niche' }, title: 'Old scan' };
+    const oldSummary = buildScanSummary('previous', [], { run: oldRun, summary: buildRunSummary(oldRun, []) });
+    assert.equal(oldSummary.candidateDiagnostics, null);
+    assert.equal(oldSummary.candidateDiagnosticsNotRecorded, true, 'historical scan shows not recorded rather than false zeros');
+    assert.equal(buildScanSummary('previous', [], { run: { metadata: { scanType: 'manual' } } }).candidateDiagnosticsNotRecorded, false, 'manual import has no candidate selection');
   }
 
   // Ranking's commentCount can include replies or be stale: ten videos can all report

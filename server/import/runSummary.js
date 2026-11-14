@@ -45,6 +45,7 @@ export function buildRunSummary(run, items = [], { total } = {}) {
     notFit: buckets.not_fit,
     done: buckets.done,
     headline: buckets.headline,
+    candidateDiagnostics: run.candidateDiagnostics ?? null,
     perVideo,
   };
 }

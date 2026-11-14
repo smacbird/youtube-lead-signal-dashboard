@@ -325,6 +325,7 @@ export function headlineFor(counts: { best: number; maybe: number; not_fit: numb
 export function buildScanSummary(source: ScanSummary['source'], items: ScoredFixture[], body: any = {}): ScanSummary {
   const server = body.summary;
   const run = body.run || {};
+  const candidateDiagnostics = server?.candidateDiagnostics ?? run.candidateDiagnostics ?? body.candidateDiagnostics ?? null;
   const statuses = Object.fromEntries(items.map((item) => [item.id, item.opportunity.status])) as Record<string, LocalStatus>;
   const counts = countBuckets(items, statuses);
   const notes: string[] = [];
@@ -335,7 +336,9 @@ export function buildScanSummary(source: ScanSummary['source'], items: ScoredFix
     source,
     title: run.title,
     startedAt: run.startedAt,
-    candidatesConsidered: body.candidatesConsidered ?? null,
+    candidatesConsidered: candidateDiagnostics?.considered ?? body.candidatesConsidered ?? null,
+    candidateDiagnostics,
+    candidateDiagnosticsNotRecorded: source === 'previous' && run.metadata?.scanType === 'niche' && !candidateDiagnostics,
     headline: headlineFor(counts),
     best: counts.best,
     maybe: counts.maybe,
@@ -350,7 +353,7 @@ export function buildScanSummary(source: ScanSummary['source'], items: ScoredFix
     duplicates: server?.duplicates ?? 0,
     capped: server?.capped ?? 0,
     skipped: server?.skipped ?? 0,
-    videos: body.videosFound ? body.videosFound.length : server?.perVideo?.length ?? null,
+    videos: candidateDiagnostics?.selected ?? (body.videosFound ? body.videosFound.length : server?.perVideo?.length ?? null),
     readableVideos: server?.perVideo?.length ? server.perVideo.filter((video: { fetched: number }) => video.fetched > 0).length : null,
     quotaUnits: Number(run.estimatedQuotaUnits || 0),
     perVideo: server?.perVideo || [],

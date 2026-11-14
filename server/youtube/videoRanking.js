@@ -67,7 +67,10 @@ export function rankCandidateVideos(candidates, statsById, { maxVideos, minComme
   const focused = profileId === 'clicks_no_sales';
 
   if (!statsById) {
-    if (!focused) return { selected: candidates.slice(0, limit).map((video) => ({ ...video, commentCount: null, rankScore: null, titleMatches: titleProspectMatches(video.title) })), dropped: [] };
+    if (!focused) return {
+      selected: candidates.slice(0, limit).map((video) => ({ ...video, commentCount: null, rankScore: null, titleMatches: titleProspectMatches(video.title) })),
+      dropped: candidates.slice(limit).map((video) => ({ id: video.id, title: video.title, reason: 'search_order_limit', commentCount: null })),
+    };
     // For this profile, no statistics means its comment floors cannot be
     // verified. Return an honest empty shortlist instead of scanning blindly.
     return { selected: [], dropped: candidates.map((video) => ({ id: video.id, title: video.title, reason: 'statistics_unavailable', commentCount: null })) };

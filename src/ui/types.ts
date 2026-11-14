@@ -98,11 +98,20 @@ export type VideoBreakdown = {
   error: string | null;
 };
 
+export type CandidateDiagnostics = {
+  considered: number;
+  selected: number;
+  dropped: number;
+  reasons: Array<{ reason: string; count: number; titles: string[] }>;
+};
+
 export type ScanSummary = {
   source: 'scan' | 'manual' | 'previous' | 'saved';
   title?: string;
   startedAt?: string;
   candidatesConsidered?: number | null;
+  candidateDiagnostics: CandidateDiagnostics | null;
+  candidateDiagnosticsNotRecorded: boolean;
   headline: string;
   best: number;
   maybe: number;

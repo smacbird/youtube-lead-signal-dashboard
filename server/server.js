@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { JsonImportStore, hydrateOpportunity, RUN_RESULT_LIMIT } from './persistence/store.js';
 import { buildRunSummary } from './import/runSummary.js';
-import { formatScanTitle, scanNiche } from './scan/scanNiche.js';
+import { formatScanTitle, nicheScanResponseStatus, scanNiche } from './scan/scanNiche.js';
 import { importYouTubeVideos } from './import/importService.js';
 import { YouTubeReadOnlyClient } from './youtube/client.js';
 import { listNicheProfiles } from './youtube/nicheProfiles.js';
@@ -269,7 +269,7 @@ async function handle(request, response) {
     if (request.method === 'POST' && url.pathname === '/api/scan/youtube-niche') {
       const body = await readJson(request);
       const result = await scanNiche({ body, store, youtubeClient });
-      sendJson(response, result.run.status === 'failed' && !result.videosFound.length ? 400 : 200, result);
+      sendJson(response, nicheScanResponseStatus(result), result);
       return;
     }
 

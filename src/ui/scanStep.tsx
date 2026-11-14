@@ -37,7 +37,7 @@ export function ScanPanel({ niche, settings, options, onOptionsChange, onOpenOpt
       const body = await apiJson('/api/scan/youtube-niche', { method: 'POST', body: JSON.stringify(nicheScanBody(options, niche, settings.replyTone)) });
       const items = (body.items || []).map(normaliseImportedOpportunity);
       onResult({ items, summary: buildScanSummary('scan', items, body), nicheScan: true, runId: body.run?.id });
-      setMessage('Scan finished. Your leads are in Step 3.');
+      setMessage(items.length ? 'Scan finished. Your leads are in Step 3.' : 'Scan finished with no comments to review. See the video-selection details in Step 3.');
     } catch (error) {
       setMessage(`That did not work: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
@@ -85,6 +85,17 @@ export function ScanPanel({ niche, settings, options, onOptionsChange, onOpenOpt
   );
 }
 
+const candidateReasonLabels: Record<string, string> = {
+  off_topic: 'Off-topic for this scan',
+  too_few_comments: 'Too few comments',
+  comments_hidden_or_disabled: 'Comment count unavailable',
+  no_statistics: 'Video metadata not returned',
+  statistics_unavailable: 'Ranking metadata unavailable',
+  ranked_below_cutoff: 'Qualified, below selected-video limit',
+  search_order_limit: 'Beyond search-order selection limit',
+  other: 'Other reason',
+};
+
 const stopReasons: Record<string, string> = {
   no_more_comments: 'read every comment',
   video_budget_used: 'reached its share',
@@ -120,6 +131,19 @@ export function ScanResultCard({ summary, onShow }: { summary: ScanSummary; onSh
       {summary.notes.length > 0 && (
         <ul className="scan-notes" aria-label="Scan notes">{summary.notes.map((note) => <li key={note}>{note}</li>)}</ul>
       )}
+      {summary.candidateDiagnostics && (
+        <details className="more-options">
+          <summary>Why videos were not shortlisted ({summary.candidateDiagnostics.dropped} of {summary.candidateDiagnostics.considered})</summary>
+          <p className="workflow-note">{summary.candidateDiagnostics.considered} distinct videos found: {summary.candidateDiagnostics.selected} selected + {summary.candidateDiagnostics.dropped} not selected. These counts are videos, not comments; examples are titles only.</p>
+          {summary.candidateDiagnostics.reasons.length ? <ul className="video-breakdown">
+            {summary.candidateDiagnostics.reasons.map((group) => <li key={group.reason}>
+              <strong>{candidateReasonLabels[group.reason] || group.reason.replaceAll('_', ' ')}: {group.count}</strong>
+              {group.titles.length > 0 && <span>Examples: {group.titles.join(' · ')}</span>}
+            </li>)}
+          </ul> : <p className="workflow-note">No videos were dropped. {summary.candidateDiagnostics.considered === 0 ? 'Search returned no candidate videos.' : ''}</p>}
+        </details>
+      )}
+      {summary.candidateDiagnosticsNotRecorded && <p className="workflow-note">Candidate-selection reasons were not recorded for this older scan.</p>}
       {summary.perVideo.length > 0 && (
         <details className="more-options">
           <summary>Per-video breakdown and YouTube units</summary>
