@@ -27,12 +27,24 @@ const PAID_AD_TITLE = /\b(?:facebook ads?|google ads?|tiktok ads?|youtube ads?|m
 const CLICKS_BUT_NO_SALES = /\bclicks? (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)\b/i;
 const TRAFFIC_BUT_NO_SALES = /\btraffic (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)\b/i;
 const ACQUISITION_STAGE = /\b(?:no|zero|not getting|can'?t get|cannot get) (?:affiliate |link |website |organic )*(?:clicks?|traffic)\b|\b(?:how to |ways to )?(?:get|getting|generate|drive|increase|boost) (?:more |your |affiliate |link |website |organic )*(?:clicks?|traffic)\b/i;
-const DIRECT_PAIN = /\b(?:clicks? (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)|traffic (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)|(?:affiliate )?links? (?:not|aren't|isn't|won't) convert(?:ing)?|no (?:affiliate )?(?:sales|commissions?|conversions?)|zero (?:affiliate )?(?:sales|commissions?|conversions?)|not converting|no one (?:buys|is buying)|traffic.to.offer mismatch|why (?:am i getting |are there )?no sales)\b/i;
+const DIRECT_PAIN = /\b(?:clicks? (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)|traffic (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)|(?:affiliate )?links? (?:not|aren't|are not|isn't|is not|won't) convert(?:ing)?|not getting (?:any )?(?:affiliate )?(?:sales|commissions?|conversions?)|no (?:affiliate )?(?:sales|commissions?|conversions?)|zero (?:affiliate )?(?:sales|commissions?|conversions?)|not converting|no one (?:buys|is buying)|traffic.to.offer mismatch|why (?:am i getting |are there )?no sales)\b/i;
 const CONVERSION_TOPIC = /\b(?:affiliate )?(?:conversion rate|conversions?|sales funnel|offers? that convert|sales from (?:affiliate )?clicks?|increase (?:affiliate )?sales|improve (?:affiliate )?sales|convert (?:affiliate )?(?:clicks?|traffic|links?|offers?) (?:into|to) sales)\b/i;
-const BROAD_AFFILIATE_TOPIC = /\b(?:troubleshoot(?:ing)?|common mistakes?|mistakes? to avoid|not working|fix(?:ing)? (?:your |an? )?(?:affiliate |sales |conversion |offer|funnel)|funnel(?:s)?|opt[- ]?ins?|bridge pages?|landing pages?|offer(?:s)?|audience (?:match|fit)|tracking (?:sales|conversions?)|conversion strateg(?:y|ies)|traffic.to.sales)\b/i;
+const BROAD_AFFILIATE_TOPIC = /\b(?:troubleshoot(?:ing)?|common mistakes?|mistakes? to avoid|(?:not|isn't|is not|aren't|are not) working|fix(?:ing)? (?:your |an? )?(?:affiliate |sales |conversion |offer|funnel)|funnel(?:s)?|opt[- ]?ins?|bridge pages?|landing pages?|offer(?:s)?|audience (?:match|fit)|tracking (?:sales|conversions?)|conversion strateg(?:y|ies)|traffic.to.sales)\b/i;
 const BROAD_EXCLUSIONS = /\b(?:beginner(?:s)? guide|affiliate marketing for beginners|how to start affiliate marketing|getting started with affiliate marketing)\b/i;
 
+// YouTube search snippets HTML-encode titles (&#39;, &amp;) and creators use curly
+// quotes; normalise before matching so "Aren’t" and "aren&#39;t" match "aren't".
+export function normalizeTitle(text = '') {
+  return String(text)
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&')
+    .replace(/[\u2018\u2019\u02BC]/g, "'").replace(/[\u201C\u201D]/g, '"');
+}
+
 export function clicksNoSalesFit({ title = '', description = '' } = {}) {
+  title = normalizeTitle(title);
+  description = normalizeTitle(description);
   const affiliateTitle = AFFILIATE_TITLE.test(title);
   if (MUSIC_TITLE.test(title) || PAID_AD_TITLE.test(title) || (OFF_TOPIC_TITLE.test(title) && !affiliateTitle)) return 'off_topic';
   // An acquisition-stage title is excluded even if its description mentions

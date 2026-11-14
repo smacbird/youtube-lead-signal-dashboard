@@ -314,6 +314,16 @@ assert.equal(clicksNoSalesFit({ title: 'Affiliate marketing for beginners', desc
 assert.equal(clicksNoSalesFit({ title: 'Affiliate marketing for beginners', description: 'Why affiliate links get clicks but no sales.' }), 'off_topic', 'specific description cannot rescue a generic beginner title');
 assert.equal(clicksNoSalesFit({ title: 'Clicks but no sales: offer mismatch', description: 'Affiliate marketing traffic and offers explained' }), 'direct');
 assert.equal(clicksNoSalesFit({ title: 'Why Your Affiliate Links Get No Clicks (The Fix)', description: 'Improve affiliate conversion rate.' }), 'off_topic', 'actual wrong-funnel-stage video is excluded');
+// Live-scan titles (Nov 14) wrongly dropped as off_topic: curly quotes, HTML entities, contractions.
+for (const [title, fit] of [
+  ['Why Your Affiliate Links Aren\u2019t Converting? Fix This!', 'direct'],
+  ['Why Your Affiliate Links Aren&#39;t Converting? Fix This!', 'direct'],
+  ["Why You're Not Getting Affiliate Sales (And How to Fix It)", 'direct'],
+  ['Why You&#39;re Not Getting Affiliate Sales (And How to Fix It)', 'direct'],
+  ["Why Your Affiliate Marketing Isn't Working (The REAL Fix)", 'broad'],
+  ['Why Your Affiliate Marketing Isn\u2019t Working (The REAL Fix)', 'broad'],
+]) assert.equal(clicksNoSalesFit({ title }), fit, title);
+assert.equal(clicksNoSalesFit({ title: 'Why Your Affiliate Links Get No Clicks &amp; Traffic' }), 'off_topic', 'entity decoding does not rescue no-clicks titles');
 assert.equal(clicksNoSalesFit({ title: 'How to get more affiliate traffic and clicks' }), 'off_topic');
 assert.equal(clicksNoSalesFit({ title: 'No affiliate traffic or clicks? Here is how to grow' }), 'off_topic');
 assert.equal(clicksNoSalesFit({ title: 'Affiliate marketing: no clicks vs clicks but no sales' }), 'direct', 'explicit conversion-pain exception');
