@@ -17,32 +17,37 @@ const PROSPECT_TITLE_PATTERNS = [
   { pattern: /\bno\s+(experience|money|website)\b/i, label: 'no experience' },
 ];
 
-// Only Clicks but No Sales is a topical gate. Other profiles keep their existing
-// ranking. A video's description can establish affiliate context for a relevant
-// title, but a generic "affiliate links below" footer cannot turn music gear or
-// ecommerce product-page videos into conversion-pain prospects.
+// Clicks but No Sales is the only profile with a topical gate. Focus on the
+// conversion stage, not traffic acquisition or general affiliate introductions.
 const AFFILIATE_TITLE = /\baffiliate(?:s)?\b|\bpartner marketing\b/i;
 const AFFILIATE_DESCRIPTION = /\baffiliate marketing\b|\baffiliate (?:links?|offers?|commissions?|programs?)\b/i;
 const OFF_TOPIC_TITLE = /\b(?:music gear|music tools?|music production|audio plugins?|guitar pedals?|ecommerce|e-commerce|shopify|online stores?|product pages?)\b/i;
-const PAIN = /\b(?:clicks? (?:but|and) no (?:sales|conversions?)|traffic (?:but|and) no (?:sales|conversions?|commissions?)|(?:affiliate )?links? (?:not|aren't|isn't|won't) convert(?:ing)?|no (?:affiliate )?(?:sales|commissions?|conversions?)|zero (?:affiliate )?(?:sales|commissions?|conversions?)|not converting|no one (?:buys|is buying)|traffic.to.offer mismatch|conversion rate|why (?:am i getting |are there )?no sales)\b/i;
+const CLICKS_BUT_NO_SALES = /\bclicks? (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)\b/i;
+const TRAFFIC_BUT_NO_SALES = /\btraffic (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)\b/i;
+const ACQUISITION_STAGE = /\b(?:no|zero|not getting|can'?t get|cannot get) (?:affiliate |link |website |organic )*(?:clicks?|traffic)\b|\b(?:how to |ways to )?(?:get|getting|generate|drive|increase|boost) (?:more |your |affiliate |link |website |organic )*(?:clicks?|traffic)\b/i;
+const DIRECT_PAIN = /\b(?:clicks? (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)|traffic (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)|(?:affiliate )?links? (?:not|aren't|isn't|won't) convert(?:ing)?|no (?:affiliate )?(?:sales|commissions?|conversions?)|zero (?:affiliate )?(?:sales|commissions?|conversions?)|not converting|no one (?:buys|is buying)|traffic.to.offer mismatch|why (?:am i getting |are there )?no sales)\b/i;
+const CONVERSION_TOPIC = /\b(?:affiliate )?(?:conversion rate|conversions?|sales funnel|offers? that convert|sales from (?:affiliate )?clicks?|increase (?:affiliate )?sales|improve (?:affiliate )?sales|convert (?:affiliate )?(?:clicks?|traffic|links?|offers?) (?:into|to) sales)\b/i;
 
 export function clicksNoSalesFit({ title = '', description = '' } = {}) {
   const affiliateTitle = AFFILIATE_TITLE.test(title);
   if (OFF_TOPIC_TITLE.test(title) && !affiliateTitle) return 'off_topic';
-  // Affiliate context in a description counts only with a direct pain title;
-  // descriptions often carry unrelated boilerplate affiliate-link disclosures.
-  const titlePain = PAIN.test(title);
-  const context = affiliateTitle || (titlePain && AFFILIATE_DESCRIPTION.test(description));
+  // An acquisition-stage title is excluded even if its description mentions
+  // conversions, unless the title explicitly addresses clicks/traffic but no sales.
+  if (ACQUISITION_STAGE.test(title) && !CLICKS_BUT_NO_SALES.test(title) && !TRAFFIC_BUT_NO_SALES.test(title)) return 'off_topic';
+  const context = affiliateTitle || AFFILIATE_DESCRIPTION.test(description);
   if (!context) return 'off_topic';
-  // Generic beginner videos often mention conversion rates in boilerplate; only
-  // a concrete pain phrase in the description upgrades them to direct.
-  if (titlePain || (affiliateTitle && PAIN.test(description.replace(/\bconversion rate\b/gi, '')))) return 'direct';
-  return affiliateTitle ? 'adjacent' : 'off_topic';
+  if (DIRECT_PAIN.test(title)) return 'direct';
+  // A description can confirm a title's conversion topic, not rescue a generic
+  // beginner or traffic title with unrelated tags or boilerplate.
+  if (CONVERSION_TOPIC.test(title)) return 'adjacent';
+  return 'off_topic';
 }
 
-/** How many search candidates to request for a scan of maxVideos videos. */
-export function candidateTarget(maxVideos) {
-  return Math.min(MAX_CANDIDATES, Math.max(1, Math.floor(Number(maxVideos) || 1)) * 2);
+/** How many distinct search candidates to request, capped to one videos.list batch. */
+export function candidateTarget(maxVideos, profileId) {
+  const count = Math.max(1, Math.floor(Number(maxVideos) || 1));
+  return profileId === 'clicks_no_sales' && count === 10 ? MAX_CANDIDATES
+    : Math.min(MAX_CANDIDATES, count * 2);
 }
 
 export function titleProspectMatches(title = '') {
@@ -60,10 +65,10 @@ export function titleProspectMatches(title = '') {
 export function rankCandidateVideos(candidates, statsById, { maxVideos, minComments = MIN_COMMENT_COUNT, profileId } = {}) {
   const limit = Math.max(1, Math.floor(Number(maxVideos) || 1));
   const focused = profileId === 'clicks_no_sales';
-  if (focused) minComments = 5;
+
   if (!statsById) {
     if (!focused) return { selected: candidates.slice(0, limit).map((video) => ({ ...video, commentCount: null, rankScore: null, titleMatches: titleProspectMatches(video.title) })), dropped: [] };
-    // For this profile, no statistics means the five-comment floor cannot be
+    // For this profile, no statistics means its comment floors cannot be
     // verified. Return an honest empty shortlist instead of scanning blindly.
     return { selected: [], dropped: candidates.map((video) => ({ id: video.id, title: video.title, reason: 'statistics_unavailable', commentCount: null })) };
   }
@@ -87,7 +92,8 @@ export function rankCandidateVideos(candidates, statsById, { maxVideos, minComme
       dropped.push({ id: video.id, title, reason: 'comments_hidden_or_disabled', commentCount: null });
       return;
     }
-    if (commentCount < minComments) {
+    const floor = focused ? (fit === 'direct' ? 3 : 5) : minComments;
+    if (commentCount < floor) {
       dropped.push({ id: video.id, title, reason: 'too_few_comments', commentCount });
       return;
     }
@@ -107,12 +113,12 @@ export const SEARCH_QUOTA_UNITS = 100;
 export const VIDEOS_LIST_QUOTA_UNITS = 1;
 
 /**
- * Search for candidates (up to 2x maxVideos), fetch statistics in ONE videos.list call,
+ * Search for candidates (2x maxVideos, or 50 for focused Standard), fetch statistics in ONE videos.list call,
  * then keep the best maxVideos. Read-only: uses youtubeClient.searchVideos and listVideos.
  * If videos.list fails, other profiles keep search order; Clicks but No Sales skips unverified videos.
  */
 export async function selectNicheVideos({ youtubeClient, queries, maxVideos, publishedAfter, order = 'relevance', minComments = MIN_COMMENT_COUNT, profileId }) {
-  const target = candidateTarget(maxVideos);
+  const target = candidateTarget(maxVideos, profileId);
   const perQuery = Math.min(25, Math.max(1, Math.ceil(target / Math.max(1, queries.length))));
   const candidates = [];
   const seen = new Set();
@@ -169,9 +175,11 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
     if (selected.length) searchErrors.push({ query: null, code: 'few_commented_videos', message: `No candidate had ${minComments}+ comments; scanned the most-commented ones instead.` });
   }
 
-  if (profileId === 'clicks_no_sales' && candidates.length && !selected.length) {
-    searchErrors.push(statsById
-      ? { query: null, code: 'no_eligible_affiliate_videos', message: 'No on-topic affiliate videos with at least 5 comments were found. Try a broader video-age choice (up to 90 days) or another niche.' }
+  if (profileId === 'clicks_no_sales' && !selected.length) {
+    searchErrors.push(!candidates.length
+      ? { query: null, code: 'no_search_candidates', message: 'No videos were found in this video-age window. Try another niche or check back when new videos are available.' }
+      : statsById
+      ? { query: null, code: 'no_eligible_affiliate_videos', message: 'No conversion-stage affiliate videos met the comment minimum (3 for direct pain, 5 for adjacent). Try another niche or check back when new videos are available.' }
       : { query: null, code: 'ranking_metadata_unavailable', message: 'Could not verify video topics and comment counts, so no videos were scanned. Try again later.' });
   }
 

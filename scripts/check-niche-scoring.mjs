@@ -233,6 +233,10 @@ for (const text of ['Thnx for help', 'lol my cat does this', 'Check out my chann
 
 // Candidate ranking.
 assert.equal(candidateTarget(10), 20);
+assert.equal(candidateTarget(10, 'clicks_no_sales'), 50, 'focused Standard samples 50 candidates');
+assert.equal(candidateTarget(5, 'clicks_no_sales'), 10, 'focused Quick stays lean');
+assert.equal(candidateTarget(25, 'clicks_no_sales'), 50, 'focused Deep unchanged');
+assert.equal(candidateTarget(10, 'work_from_home'), 20, 'other Standard profiles unchanged');
 assert.equal(candidateTarget(25), 50);
 assert.equal(candidateTarget(40), 50, 'capped at one videos.list batch');
 const candidates = [
@@ -267,12 +271,18 @@ for (const title of [
   'Affiliate links not converting: what to check',
   'Getting traffic but no affiliate commissions',
   'Zero commissions from affiliate links',
-  'How to increase affiliate conversion rate for beginners',
+  'Affiliate marketing: no sales despite traffic',
 ]) assert.equal(clicksNoSalesFit({ title }), 'direct', title);
-assert.equal(clicksNoSalesFit({ title: 'Affiliate marketing for beginners' }), 'adjacent');
-assert.equal(clicksNoSalesFit({ title: 'Affiliate marketing for beginners', description: 'Learn conversion rate tips and track growth.' }), 'adjacent', 'generic description does not upgrade beginner video to direct');
-assert.equal(clicksNoSalesFit({ title: 'Affiliate marketing for beginners', description: 'Why affiliate links get clicks but no sales.' }), 'direct', 'specific pain in description upgrades affiliate video');
+assert.equal(clicksNoSalesFit({ title: 'How to increase affiliate conversion rate for beginners' }), 'adjacent', 'conversion advice without stated pain is adjacent');
+assert.equal(clicksNoSalesFit({ title: 'Affiliate offers that convert' }), 'adjacent');
+assert.equal(clicksNoSalesFit({ title: 'Affiliate marketing for beginners' }), 'off_topic', 'generic beginner content does not fill the shortlist');
+assert.equal(clicksNoSalesFit({ title: 'Affiliate marketing for beginners', description: 'Learn conversion rate tips and track growth.' }), 'off_topic', 'generic title stays out despite conversion boilerplate');
+assert.equal(clicksNoSalesFit({ title: 'Affiliate marketing for beginners', description: 'Why affiliate links get clicks but no sales.' }), 'off_topic', 'specific description cannot rescue a generic beginner title');
 assert.equal(clicksNoSalesFit({ title: 'Clicks but no sales: offer mismatch', description: 'Affiliate marketing traffic and offers explained' }), 'direct');
+assert.equal(clicksNoSalesFit({ title: 'Why Your Affiliate Links Get No Clicks (The Fix)', description: 'Improve affiliate conversion rate.' }), 'off_topic', 'actual wrong-funnel-stage video is excluded');
+assert.equal(clicksNoSalesFit({ title: 'How to get more affiliate traffic and clicks' }), 'off_topic');
+assert.equal(clicksNoSalesFit({ title: 'No affiliate traffic or clicks? Here is how to grow' }), 'off_topic');
+assert.equal(clicksNoSalesFit({ title: 'Affiliate marketing: no clicks vs clicks but no sales' }), 'direct', 'explicit conversion-pain exception');
 for (const title of [
   'Music tools: best plugins for beginners',
   'Ecommerce product page conversion rate tips',
@@ -284,27 +294,37 @@ assert.equal(clicksNoSalesFit({ title: 'Marketing for beginners', description: '
 
 const focusedCandidates = [
   { id: 'music', title: 'Music gear for beginners' },
+  { id: 'noClicks', title: 'Why Your Affiliate Links Get No Clicks (The Fix)' },
+  { id: 'beginner', title: 'Affiliate marketing for beginners' },
   { id: 'store', title: 'Ecommerce product page conversion rate' },
-  { id: 'adjacent', title: 'Affiliate marketing for beginners' },
+  { id: 'adjacent', title: 'How to improve affiliate conversion rate for beginners' },
   { id: 'direct', title: 'Affiliate links not converting: clicks but no sales' },
   { id: 'low', title: 'Affiliate links not converting: zero commissions' },
 ];
 const focusedStats = new Map([
   ['music', { commentCount: 9000 }],
+  ['noClicks', { commentCount: 12000 }],
+  ['beginner', { commentCount: 15000 }],
   ['store', { commentCount: 2500 }],
   ['adjacent', { commentCount: 600 }],
   ['direct', { commentCount: 5 }],
   ['low', { commentCount: 4 }],
 ]);
 const focusedRank = rankCandidateVideos(focusedCandidates, focusedStats, { maxVideos: 5, profileId: 'clicks_no_sales' });
-assert.deepEqual(focusedRank.selected.map(({ id }) => id), ['direct', 'adjacent'], 'direct pain with 5 comments outranks adjacent with 600');
+assert.deepEqual(focusedRank.selected.map(({ id }) => id), ['direct', 'low', 'adjacent'], 'direct pain with 4-5 comments outranks adjacent with 600');
 assert.ok(focusedRank.dropped.some(({ id, reason }) => id === 'music' && reason === 'off_topic'), 'high-comment music excluded');
+assert.ok(focusedRank.dropped.some(({ id, reason }) => id === 'noClicks' && reason === 'off_topic'), 'actual no-clicks title excluded despite 12000 comments');
+assert.ok(focusedRank.dropped.some(({ id, reason }) => id === 'beginner' && reason === 'off_topic'), 'generic beginner title excluded despite 15000 comments');
 assert.ok(focusedRank.dropped.some(({ id, reason }) => id === 'store' && reason === 'off_topic'), 'generic ecommerce excluded');
-assert.ok(focusedRank.dropped.some(({ id, reason }) => id === 'low' && reason === 'too_few_comments'), '4 comments below profile-only cutoff');
-assert.deepEqual(rankCandidateVideos(focusedCandidates, focusedStats, { maxVideos: 2, profileId: 'affiliate_marketing' }).selected.map(({ id }) => id), ['music', 'store'], 'other profiles retain their existing ranking');
-assert.equal(rankCandidateVideos([{ id: 'direct', title: focusedCandidates[3].title }], new Map([['direct', { commentCount: 5 }]]), { maxVideos: 1 }).selected.length, 0, 'other profiles still require 10');
+assert.equal(focusedRank.selected.find(({ id }) => id === 'low')?.commentCount, 4, 'direct pain accepts four comments');
+assert.equal(rankCandidateVideos([{ id: 'direct', title: focusedCandidates.find(({ id }) => id === 'direct').title }], new Map([['direct', { commentCount: 3 }]]), { maxVideos: 1, profileId: 'clicks_no_sales' }).selected.length, 1, 'direct pain accepts three comments');
+assert.ok(rankCandidateVideos([{ id: 'direct', title: focusedCandidates.find(({ id }) => id === 'direct').title }], new Map([['direct', { commentCount: 2 }]]), { maxVideos: 1, profileId: 'clicks_no_sales' }).dropped.some(({ reason }) => reason === 'too_few_comments'), 'direct pain rejects two comments');
+assert.ok(rankCandidateVideos([{ id: 'adjacent', title: focusedCandidates.find(({ id }) => id === 'adjacent').title }], new Map([['adjacent', { commentCount: 4 }]]), { maxVideos: 1, profileId: 'clicks_no_sales' }).dropped.some(({ reason }) => reason === 'too_few_comments'), 'conversion-adjacent still requires five');
+assert.equal(rankCandidateVideos([{ id: 'adjacent', title: focusedCandidates.find(({ id }) => id === 'adjacent').title }], new Map([['adjacent', { commentCount: 5 }]]), { maxVideos: 1, profileId: 'clicks_no_sales' }).selected.length, 1);
+assert.deepEqual(rankCandidateVideos(focusedCandidates, focusedStats, { maxVideos: 2, profileId: 'affiliate_marketing' }).selected.map(({ id }) => id), ['beginner', 'music'], 'other profiles retain comment/title ranking even for focused off-topic videos');
+assert.equal(rankCandidateVideos([{ id: 'direct', title: focusedCandidates.find(({ id }) => id === 'direct').title }], new Map([['direct', { commentCount: 5 }]]), { maxVideos: 1 }).selected.length, 0, 'other profiles still require 10');
 const noStats = rankCandidateVideos(focusedCandidates, null, { maxVideos: 2, profileId: 'clicks_no_sales' });
-assert.deepEqual(noStats.selected, [], 'ranking failure cannot verify the five-comment minimum, so scans none');
+assert.deepEqual(noStats.selected, [], 'ranking failure cannot verify the comment minimum, so scans none');
 assert.equal(rankCandidateVideos([{ id: 'music', title: focusedCandidates[0].title }], null, { maxVideos: 2, profileId: 'clicks_no_sales' }).selected.length, 0, 'no-statistics fallback does not scan unrelated videos');
 
 const focusedClient = {
@@ -319,9 +339,52 @@ const focusedClient = {
   },
 };
 const focusedSelection = await selectNicheVideos({ youtubeClient: focusedClient, queries: ['affiliate clicks but no sales'], maxVideos: 5, publishedAfter: '2026-10-01T00:00:00Z', profileId: 'clicks_no_sales' });
-assert.deepEqual(focusedSelection.videos.map(({ id }) => id), ['direct', 'adjacent']);
+assert.deepEqual(focusedSelection.videos.map(({ id }) => id), ['direct', 'low', 'adjacent']);
 assert.equal(focusedClient.calls.videos, 1, 'same one read-only batched metadata lookup');
 assert.equal(focusedClient.calls.search, 1, 'no extra search calls');
+// Focused Standard samples up to 50 distinct results while staying within the
+// six-query bundle, 25-result/search limit and one videos.list batch.
+const standardCalls = { search: [], videos: [] };
+let generated = 0;
+const standardClient = {
+  async searchVideos({ query, maxResults }) {
+    standardCalls.search.push({ query, maxResults });
+    return { items: Array.from({ length: maxResults }, () => {
+      generated += 1;
+      return { id: { videoId: `cand${String(generated).padStart(7, '0')}` }, snippet: { title: 'Affiliate links not converting: zero commissions' } };
+    }) };
+  },
+  async listVideos(ids) {
+    standardCalls.videos.push(ids);
+    return { items: ids.map((id) => ({ id, snippet: { title: 'Affiliate links not converting: zero commissions' }, statistics: { commentCount: '3' } })) };
+  },
+};
+const standardQueries = NICHE_PROFILES.clicks_no_sales.queries;
+const standardSelection = await selectNicheVideos({ youtubeClient: standardClient, queries: standardQueries, maxVideos: 10, profileId: 'clicks_no_sales' });
+assert.equal(standardSelection.candidatesConsidered, 50, 'focused Standard reaches 50 distinct candidates');
+assert.equal(standardSelection.videos.length, 10, 'still selects at most 10 for comments');
+assert.equal(standardCalls.videos.length, 1, 'one videos.list request for the focused Standard batch');
+assert.equal(standardCalls.videos[0].length, 50);
+assert.equal(new Set(standardCalls.videos[0]).size, 50);
+assert.ok(standardCalls.search.length <= standardQueries.length, 'search calls bounded by existing query bundle');
+assert.ok(standardCalls.search.every(({ maxResults }) => maxResults <= 25), 'each search asks at most 25');
+assert.equal(standardSelection.estimatedSearchQuotaUnits, standardCalls.search.length * 100);
+assert.equal(standardSelection.estimatedRankingQuotaUnits, 1);
+const repeatedClient = {
+  async searchVideos({ maxResults }) { return { items: Array.from({ length: maxResults }, (_, index) => ({ id: { videoId: `same${index}` }, snippet: { title: 'Affiliate clicks but no sales' } })) }; },
+  async listVideos(ids) { assert.equal(new Set(ids).size, ids.length, 'deduplicated ids sent to videos.list'); return { items: ids.map((id) => ({ id, snippet: { title: 'Affiliate clicks but no sales' }, statistics: { commentCount: '3' } })) }; },
+};
+const repeated = await selectNicheVideos({ youtubeClient: repeatedClient, queries: standardQueries, maxVideos: 10, profileId: 'clicks_no_sales' });
+assert.equal(repeated.candidatesConsidered, 9, 'duplicates do not inflate candidate count');
+const wrongStageClient = {
+  async searchVideos() { return { items: [{ id: { videoId: 'wrong-stage' }, snippet: { title: 'Why Your Affiliate Links Get No Clicks (The Fix)' } }] }; },
+  async listVideos() { return { items: [{ id: 'wrong-stage', snippet: { title: 'Why Your Affiliate Links Get No Clicks (The Fix)' }, statistics: { commentCount: '9000' } }] }; },
+};
+const wrongStage = await selectNicheVideos({ youtubeClient: wrongStageClient, queries: standardQueries, maxVideos: 10, profileId: 'clicks_no_sales' });
+assert.deepEqual(wrongStage.videos, [], 'no-clicks video alone yields honest empty shortlist');
+assert.ok(wrongStage.searchErrors.some(({ code }) => code === 'no_eligible_affiliate_videos'));
+assert.ok(wrongStage.searchErrors.every(({ message }) => !/up to 90 days|broader age window/i.test(message)), 'empty result does not suggest an age choice already exhausted');
+
 const allOffTopicClient = {
   async searchVideos() { return { items: [{ id: { videoId: 'music' }, snippet: { title: 'Music gear for beginners' } }] }; },
   async listVideos() { return { items: [{ id: 'music', snippet: { title: 'Music gear for beginners' }, statistics: { commentCount: '9999' } }] }; },
@@ -329,6 +392,15 @@ const allOffTopicClient = {
 const emptySelection = await selectNicheVideos({ youtubeClient: allOffTopicClient, queries: ['affiliate clicks'], maxVideos: 1, profileId: 'clicks_no_sales' });
 assert.deepEqual(emptySelection.videos, [], 'no off-topic fallback when no eligible videos');
 assert.ok(emptySelection.searchErrors.some(({ code }) => code === 'no_eligible_affiliate_videos'), 'empty shortlist explains next step');
+const noCandidates = await selectNicheVideos({
+  youtubeClient: { async searchVideos() { return { items: [] }; }, async listVideos() { throw new Error('should not call videos.list'); } },
+  queries: standardQueries, maxVideos: 10, profileId: 'clicks_no_sales',
+});
+assert.deepEqual(noCandidates.videos, []);
+assert.ok(noCandidates.searchErrors.some(({ code }) => code === 'no_search_candidates'), 'zero search results have a specific diagnostic');
+assert.ok(noCandidates.searchErrors.every(({ message }) => !/up to 90 days|broader age window/i.test(message)), 'no-candidate result remains useful at 90 days');
+assert.equal(noCandidates.estimatedRankingQuotaUnits, 0, 'no empty metadata lookup');
+
 const missingStatsClient = {
   async searchVideos() { return { items: [{ id: { videoId: 'direct' }, snippet: { title: 'Affiliate links not converting' } }] }; },
   async listVideos() { throw new Error('metadata temporarily unavailable'); },
@@ -340,9 +412,9 @@ assert.match(missingStats.searchErrors[0].message, /skip videos/, 'failure note 
 
 const belowCutoffClient = {
   async searchVideos() { return { items: [{ id: { videoId: 'direct' }, snippet: { title: 'Affiliate links not converting' } }] }; },
-  async listVideos() { return { items: [{ id: 'direct', snippet: { title: 'Affiliate links not converting' }, statistics: { commentCount: '4' } }] }; },
+  async listVideos() { return { items: [{ id: 'direct', snippet: { title: 'Affiliate links not converting' }, statistics: { commentCount: '2' } }] }; },
 };
-assert.equal((await selectNicheVideos({ youtubeClient: belowCutoffClient, queries: ['affiliate clicks'], maxVideos: 1, profileId: 'clicks_no_sales' })).videos.length, 0, 'relevant four-comment video stays below threshold');
+assert.equal((await selectNicheVideos({ youtubeClient: belowCutoffClient, queries: ['affiliate clicks'], maxVideos: 1, profileId: 'clicks_no_sales' })).videos.length, 0, 'relevant two-comment video stays below threshold');
 
 function mockSearchClient({ failVideosList = false, comments = {} } = {}) {
   const calls = { search: [], videos: [] };

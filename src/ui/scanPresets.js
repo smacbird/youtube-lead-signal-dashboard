@@ -1,5 +1,5 @@
 // Scan sizes shown in Step 2, and an honest YouTube quota estimate for each.
-// Mirrors server/youtube/videoRanking.js (2x candidates, cap 50, <=25 per search)
+// Mirrors server/youtube/videoRanking.js (2x candidates except Clicks but No Sales Standard: 50; <=25 per search)
 // and the import (reuse one videos.list result; one commentThreads call per page read).
 
 export const DAILY_QUOTA = 10000;
@@ -15,11 +15,11 @@ export function presetForVideos(videos) {
   return SCAN_PRESETS.find((preset) => preset.videos === Number(videos)) || SCAN_PRESETS[0];
 }
 
-export function estimateScanQuota({ videos, comments, queryCount = 6 }) {
+export function estimateScanQuota({ videos, comments, queryCount = 6, profileId } = {}) {
   const v = Math.max(1, Math.min(25, Math.floor(Number(videos) || 1)));
   const cap = Math.max(1, Math.min(300, Math.floor(Number(comments) || 1)));
   const q = Math.max(1, Math.floor(Number(queryCount) || 1));
-  const target = Math.min(50, v * 2);
+  const target = profileId === 'clicks_no_sales' && v === 10 ? 50 : Math.min(50, v * 2);
   const perQuery = Math.min(25, Math.ceil(target / q));
   const minSearches = Math.min(q, Math.ceil(target / perQuery));
   // With enough search results: searches cost 100 each, the ranking videos.list is

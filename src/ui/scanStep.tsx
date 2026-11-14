@@ -28,7 +28,7 @@ export function ScanPanel({ niche, settings, options, onOptionsChange, onOpenOpt
   const preset = presetFor(options);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const quota = estimateScanQuota({ videos: preset.videos, comments: options.commentCap, queryCount: QUERIES_PER_NICHE[niche] || 6 });
+  const quota = estimateScanQuota({ videos: preset.videos, comments: options.commentCap, queryCount: QUERIES_PER_NICHE[niche] || 6, profileId: niche });
 
   async function scanByNiche() {
     setLoading(true);
@@ -62,6 +62,7 @@ export function ScanPanel({ niche, settings, options, onOptionsChange, onOpenOpt
       <p className="quota-note">
         About {quota.low}–{quota.high} of your {DAILY_QUOTA.toLocaleString()} daily YouTube units. Each search costs 100; reading comments is cheap (1 unit per page).
       </p>
+      {niche === 'clicks_no_sales' && preset.videos === 10 && <p className="workflow-note">Standard checks up to 50 candidate videos for conversion-stage topics; it still selects at most 10 to read comments.</p>}
       <p className="options-summary">
         <button type="button" className="link-button" onClick={onOpenOptions} aria-controls="sidebar-panel-options">
           {scanOptionsSummary(options)} · change in More options
