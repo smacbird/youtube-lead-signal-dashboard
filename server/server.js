@@ -7,6 +7,7 @@ import { formatScanTitle, nicheScanResponseStatus, scanNiche } from './scan/scan
 import { importYouTubeVideos } from './import/importService.js';
 import { YouTubeReadOnlyClient } from './youtube/client.js';
 import { listNicheProfiles } from './youtube/nicheProfiles.js';
+import { checkVolume } from './youtube/volumeCheck.js';
 import { generateReplyDrafts } from './ai/draftGenerator.js';
 import { canPrepareReply, safeDraftsForOpportunity } from '../src/scoring/draftSafety.js';
 import { createAuth } from './auth.js';
@@ -15,6 +16,8 @@ import { lastKnownKeyStatus } from './keyHealth.js';
 const PORT = Number(process.env.PORT || 4174);
 const store = new JsonImportStore();
 const youtubeClient = new YouTubeReadOnlyClient();
+// Volume checks have a strict per-click request budget: never retry a billed call.
+const volumeYoutubeClient = new YouTubeReadOnlyClient({ maxRetries: 0 });
 const auth = createAuth();
 // OAuth web-client ID is public metadata, never an access token or client secret.
 const googleClientId = /^[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(process.env.GOOGLE_CLIENT_ID || '')
@@ -263,6 +266,12 @@ async function handle(request, response) {
 
     if (request.method === 'GET' && url.pathname === '/api/niche-profiles') {
       sendJson(response, 200, { items: listNicheProfiles() });
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/volume-check') {
+      const body = await readJson(request);
+      sendJson(response, 200, await checkVolume({ profileId: body.profileId, daysBack: body.daysBack, youtubeClient: volumeYoutubeClient }));
       return;
     }
 

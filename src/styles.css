@@ -809,6 +809,11 @@ h2[tabindex="-1"]:focus { outline: none; }
 .niche-group-label { grid-column: 1 / -1; margin: 6px 0 0; font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .niche-group-label:first-of-type { margin-top: 0; }
 .niche-card, .preset-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 18px; border: 1px solid var(--line); background: rgba(248, 241, 223, 0.04); cursor: pointer; }
+.niche-card-wrap { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+.niche-card-wrap .niche-card { width: 100%; flex: 1; }
+.volume-button { margin: 8px 0 0; font-size: 0.78rem; text-align: left; }
+.volume-result { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 0.75rem; line-height: 1.4; }
+.volume-result strong { color: var(--mint); }
 .niche-card .choice-description, .preset-card .choice-description { display: block; color: var(--muted); font-size: 0.9rem; line-height: 1.5; font-weight: 400; text-transform: none; letter-spacing: normal; max-width: 34ch; }
 .preset-card small { color: var(--gold); font-size: 0.8rem; }
 .niche-card input, .preset-card input { position: absolute; opacity: 0; width: 1px; height: 1px; }

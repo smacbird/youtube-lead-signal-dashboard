@@ -340,7 +340,7 @@ function App({ initialSettings, initialHealth }: { initialSettings: AppSettings;
           summary={`Looking for: ${nicheLabel(niche)}`}
           onChange={() => { setExpandedStep(1); scrollToStep(1); }}
           help="Pick the kind of person you want to help. We search YouTube videos where those people leave comments.">
-          <NichePicker value={niche} enabled={settings.enabledNiches} onChange={(value) => { setNiche(value); setNicheChosen(true); }} />
+          <NichePicker value={niche} enabled={settings.enabledNiches} daysBack={scanOptions.daysBack} onChange={(value) => { setNiche(value); setNicheChosen(true); }} />
           {!items.length && <div className="approval-hooks">
             <button type="button" className="workflow-button safe" onClick={() => { setNicheChosen(true); setExpandedStep(2); scrollToStep(2); }}>Next: run the scan</button>
           </div>}

@@ -67,6 +67,26 @@ export function candidateTarget(maxVideos, profileId) {
     : Math.min(MAX_CANDIDATES, count * 2);
 }
 
+// Query-title lexical proxy, not a claim that a video or its audience is truly on topic.
+// Require an informative search term in the title; descriptions can supply a second
+// match but cannot rescue a generic unrelated title. Tiny synthetic test queries
+// have no informative terms and retain their old selection behavior.
+const QUERY_FILLER = new Set('how to for the a an is are with of and or best beginners beginner what why which your my from on in 2026 2025 step by do as at it no vs affiliate marketing online'.split(' '));
+export function queryTopicFit({ title = '', description = '', query = '' } = {}) {
+  const terms = [...new Set(normalizeTitle(query).toLowerCase().match(/[a-z]{2,}/g) || [])].filter((term) => !QUERY_FILLER.has(term));
+  const headline = new Set(normalizeTitle(title).toLowerCase().match(/[a-z]{2,}/g) || []);
+  const body = new Set(normalizeTitle(description).toLowerCase().match(/[a-z]{2,}/g) || []);
+  const has = (words, term) => words.has(term) || (term.endsWith('s') && words.has(term.slice(0, -1))) || words.has(`${term}s`);
+  // A broad query such as "affiliate marketing for beginners step by step"
+  // has no niche-specific terms after filler removal. Require its domain words
+  // in the title instead of treating every unrelated video as a topical match.
+  if (!terms.length) {
+    const anchors = [...new Set(normalizeTitle(query).toLowerCase().match(/[a-z]{2,}/g) || [])].filter((term) => ['affiliate', 'marketing', 'online'].includes(term));
+    return anchors.length ? anchors.every((term) => has(headline, term)) : true;
+  }
+  return terms.some((term) => has(headline, term)) && (terms.length === 1 || terms.filter((term) => has(headline, term) || has(body, term)).length >= 2);
+}
+
 export function titleProspectMatches(title = '') {
   return PROSPECT_TITLE_PATTERNS.filter(({ pattern }) => pattern.test(String(title))).map(({ label }) => label);
 }
@@ -134,80 +154,95 @@ export const SEARCH_QUOTA_UNITS = 100;
 export const VIDEOS_LIST_QUOTA_UNITS = 1;
 
 /**
- * Other profiles keep their original bounded search and one videos.list lookup.
- * Clicks but No Sales branches to its focused two-stage selector below.
- * then keep the best maxVideos. Read-only: uses youtubeClient.searchVideos and listVideos.
- * If videos.list fails, other profiles keep search order; Clicks but No Sales skips unverified videos.
+ * Ordinary profiles use two topical query angles before checking metadata; thin
+ * pools may try more searches and metadata batches. Clicks but No Sales retains
+ * its separate focused selector. All calls are read-only; a metadata failure on
+ * ordinary profiles retains topical search order.
  */
 export async function selectNicheVideos({ youtubeClient, queries, maxVideos, publishedAfter, order = 'relevance', minComments = MIN_COMMENT_COUNT, profileId }) {
   if (profileId === 'clicks_no_sales') return selectFocusedVideos({ youtubeClient, queries, maxVideos, publishedAfter, order });
   const target = candidateTarget(maxVideos, profileId);
-  const perQuery = Math.min(25, Math.max(1, Math.ceil(target / Math.max(1, queries.length))));
   const candidates = [];
   const seen = new Set();
+  const rejected = new Map();
   const searchErrors = [];
+  const videoItemsById = new Map();
   let estimatedSearchQuotaUnits = 0;
   let estimatedRankingQuotaUnits = 0;
+  let metadataFailed = false;
+  let selected = [];
+  let dropped = [];
+  let qualifiedCount = 0;
 
-  for (const query of queries) {
-    if (candidates.length >= target) break;
-    try {
-      estimatedSearchQuotaUnits += SEARCH_QUOTA_UNITS;
-      const response = await youtubeClient.searchVideos({ query, publishedAfter, maxResults: perQuery, order });
-      for (const item of response.items || []) {
-        const id = item?.id?.videoId;
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
-        candidates.push({
-          id,
-          url: `https://www.youtube.com/watch?v=${id}`,
-          title: item?.snippet?.title || 'YouTube video',
-          description: item?.snippet?.description || '',
-          channelTitle: item?.snippet?.channelTitle || '',
-          publishedAt: item?.snippet?.publishedAt || '',
-          matchedQuery: query,
-        });
-        if (candidates.length >= target) break;
+  // Two distinct query angles before deciding that the pool is good enough.
+  // Each search may inspect 50 snippets for the same 100 units, but reserves
+  // half the 20/10/50-candidate pool for the second angle. Thin pools can use
+  // later queries, always within a 50-ID videos.list batch per lookup.
+  const initialCap = queries.length > 1 ? Math.ceil(target / 2) : target;
+  for (let index = 0; index < queries.length && candidates.length < MAX_CANDIDATES; index++) {
+    if (index >= 2 && qualifiedCount >= maxVideos) break;
+    const query = queries[index];
+    const cap = index < 2 ? Math.min(MAX_CANDIDATES, (index + 1) * initialCap) : MAX_CANDIDATES;
+    if (candidates.length < cap) {
+      try {
+        estimatedSearchQuotaUnits += SEARCH_QUOTA_UNITS;
+        const response = await youtubeClient.searchVideos({ query, publishedAfter, maxResults: 50, order });
+        for (const item of response.items || []) {
+          const id = item?.id?.videoId;
+          if (!id || seen.has(id)) continue;
+          const video = {
+            id, url: `https://www.youtube.com/watch?v=${id}`,
+            title: item?.snippet?.title || 'YouTube video',
+            description: item?.snippet?.description || '',
+            channelTitle: item?.snippet?.channelTitle || '',
+            publishedAt: item?.snippet?.publishedAt || '', matchedQuery: query,
+          };
+          if (!queryTopicFit({ ...video, query })) {
+            if (!rejected.has(id)) rejected.set(id, { id, title: video.title, reason: 'off_topic', commentCount: null });
+            continue;
+          }
+          rejected.delete(id);
+          seen.add(id);
+          candidates.push(video);
+          if (candidates.length >= cap) break;
+        }
+      } catch (error) {
+        searchErrors.push({ query, code: error?.code || 'search_error', message: error?.message || 'YouTube search failed.' });
       }
-    } catch (error) {
-      searchErrors.push({ query, code: error?.code || 'search_error', message: error?.message || 'YouTube search failed.' });
     }
-  }
-
-  let statsById = null;
-  let videoItemsById = null;
-  if (candidates.length) {
-    try {
-      estimatedRankingQuotaUnits += VIDEOS_LIST_QUOTA_UNITS;
-      const response = await youtubeClient.listVideos(candidates.map((video) => video.id));
-      videoItemsById = new Map((response.items || []).map((item) => [item.id, item]));
-      statsById = new Map((response.items || []).map((item) => [item.id, { commentCount: item?.statistics?.commentCount, title: item?.snippet?.title, description: item?.snippet?.description }]));
-    } catch (error) {
-      searchErrors.push({ query: null, code: 'video_ranking_failed', message: `Could not load comment counts (${error?.message || 'videos.list failed'}); ${profileId === 'clicks_no_sales' ? 'this scan needs verified counts and will skip videos' : 'kept search order'}.` });
+    if (index === 0 && queries.length > 1) continue;
+    const missing = candidates.filter(({ id }) => !videoItemsById.has(id));
+    if (missing.length && !metadataFailed) {
+      try {
+        estimatedRankingQuotaUnits += VIDEOS_LIST_QUOTA_UNITS;
+        const response = await youtubeClient.listVideos(missing.map(({ id }) => id));
+        for (const item of response.items || []) videoItemsById.set(item.id, item);
+      } catch (error) {
+        metadataFailed = true;
+        searchErrors.push({ query: null, code: 'video_ranking_failed', message: `Could not load comment counts (${error?.message || 'videos.list failed'}); kept topical search order.` });
+      }
     }
+    const stats = videoItemsById.size && !metadataFailed
+      ? new Map([...videoItemsById].map(([id, item]) => [id, { commentCount: item?.statistics?.commentCount, title: item?.snippet?.title, description: item?.snippet?.description }]))
+      : null;
+    ({ selected, dropped } = rankCandidateVideos(candidates, stats, { maxVideos, minComments, profileId }));
+    qualifiedCount = selected.length;
+    if (stats && !selected.length && candidates.length && (index === queries.length - 1 || candidates.length === MAX_CANDIDATES)) {
+      const fallback = dropped.filter((video) => (video.commentCount || 0) > 0).sort((a, b) => b.commentCount - a.commentCount).slice(0, maxVideos);
+      const byId = new Map(candidates.map((video) => [video.id, video]));
+      selected = fallback.map((video) => ({ ...byId.get(video.id), commentCount: video.commentCount, titleMatches: titleProspectMatches(video.title), rankScore: null }));
+      const keep = new Set(selected.map((video) => video.id));
+      dropped = dropped.filter((video) => !keep.has(video.id));
+      if (selected.length) searchErrors.push({ query: null, code: 'few_commented_videos', message: `No candidate had ${minComments}+ comments; scanned the most-commented ones instead.` });
+    }
+    if (metadataFailed) break;
   }
-
-  let { selected, dropped } = rankCandidateVideos(candidates, statsById, { maxVideos, minComments, profileId });
-  if (statsById && !selected.length && candidates.length) {
-    // Every candidate is under the comment threshold: scan the most-commented ones rather than nothing.
-    const fallback = dropped.filter((video) => (video.commentCount || 0) > 0).sort((a, b) => b.commentCount - a.commentCount).slice(0, Math.max(1, Math.floor(Number(maxVideos) || 1)));
-    const byId = new Map(candidates.map((video) => [video.id, video]));
-    selected = fallback.map((video) => ({ ...byId.get(video.id), commentCount: video.commentCount, titleMatches: titleProspectMatches(video.title), rankScore: null }));
-    const keep = new Set(selected.map((video) => video.id));
-    dropped = dropped.filter((video) => !keep.has(video.id));
-    if (selected.length) searchErrors.push({ query: null, code: 'few_commented_videos', message: `No candidate had ${minComments}+ comments; scanned the most-commented ones instead.` });
-  }
-
   return {
     videos: selected,
-    // Reuse the read-only videos.list response during import; don't spend a second unit.
-    videoItems: videoItemsById ? selected.map((video) => videoItemsById.get(video.id)).filter(Boolean) : null,
-    candidatesConsidered: candidates.length,
-    droppedVideos: dropped,
-    rankedByComments: Boolean(statsById),
-    searchErrors,
-    estimatedSearchQuotaUnits,
-    estimatedRankingQuotaUnits,
+    videoItems: videoItemsById.size && !metadataFailed ? selected.map((video) => videoItemsById.get(video.id)).filter(Boolean) : null,
+    candidatesConsidered: candidates.length + rejected.size,
+    droppedVideos: [...dropped, ...rejected.values()], rankedByComments: videoItemsById.size > 0 && !metadataFailed,
+    searchErrors, estimatedSearchQuotaUnits, estimatedRankingQuotaUnits,
   };
 }
 

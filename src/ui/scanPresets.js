@@ -1,6 +1,7 @@
 // Scan sizes shown in Step 2, and an honest YouTube quota estimate for each.
-// Mirrors server/youtube/videoRanking.js (2x candidates except Clicks but No Sales Standard: 50; <=25 per search)
-// and the import (reuse video metadata; one commentThreads call per page read).
+// Mirrors videoRanking: ordinary cards search two topical angles first (50 snippets
+// requested per search; at most 50 distinct metadata candidates overall). Focused
+// Clicks but No Sales retains its separate selector. Metadata is reused at import.
 
 export const DAILY_QUOTA = 10000;
 export const SEARCH_UNITS = 100;
@@ -20,13 +21,12 @@ export function estimateScanQuota({ videos, comments, queryCount = 6, profileId 
   const cap = Math.max(1, Math.min(300, Math.floor(Number(comments) || 1)));
   const q = Math.max(1, Math.floor(Number(queryCount) || 1));
   const target = profileId === 'clicks_no_sales' && v === 10 ? 50 : Math.min(50, v * 2);
-  const perQuery = Math.min(25, Math.ceil(target / q));
   const broadCap = q > 3 ? Math.ceil(target * 0.6) : target;
   const broadPerQuery = Math.ceil(broadCap / Math.min(3, q));
   const topicalTarget = Math.min(broadCap, v);
   const minSearches = profileId === 'clicks_no_sales'
     ? Math.min(q, Math.ceil(topicalTarget / broadPerQuery))
-    : Math.min(q, Math.ceil(target / perQuery));
+    : Math.min(q, 2);
   // With enough search results: searches cost 100 each, the ranking videos.list is
   // reused at import (1 unit, or 2 when focused fallback verifies a thin broad
   // pool), and commentThreads costs 1 per page actually read.
@@ -35,6 +35,6 @@ export function estimateScanQuota({ videos, comments, queryCount = 6, profileId 
   const typicalCommentPages = Math.min(v, cap);
   const maxCommentPages = Math.min(v * 3, cap);
   const low = minSearches * SEARCH_UNITS + 1 + typicalCommentPages;
-  const high = q * SEARCH_UNITS + (profileId === 'clicks_no_sales' && q > 3 ? 2 : 1) + maxCommentPages;
+  const high = q * SEARCH_UNITS + (profileId === 'clicks_no_sales' ? (q > 3 ? 2 : 1) : Math.max(1, q - 1)) + maxCommentPages;
   return { low, high, minSearches, maxSearches: q, typicalCommentPages, maxCommentPages };
 }

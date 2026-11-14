@@ -97,7 +97,7 @@ export class YouTubeReadOnlyClient {
       type: 'video',
       q: query,
       order,
-      maxResults: clamp(maxResults, 1, 25),
+      maxResults: clamp(maxResults, 1, 50),
       publishedAfter,
       safeSearch: 'moderate',
       relevanceLanguage: 'en',

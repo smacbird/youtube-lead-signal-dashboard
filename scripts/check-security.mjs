@@ -97,7 +97,7 @@ try {
       ['/api/import-runs', 'GET'], ['/api/import-runs/run_one', 'GET'],
       ['/api/export/opportunities.csv', 'GET'], ['/api/config', 'GET'], ['/api/settings', 'GET'], ['/api/settings', 'PUT'],
       ['/api/opportunities/opp_shared/ai-drafts', 'POST'],
-      ['/api/scan/youtube-niche', 'POST'], ['/api/import/youtube', 'POST'],
+      ['/api/scan/youtube-niche', 'POST'], ['/api/volume-check', 'POST'], ['/api/import/youtube', 'POST'],
       ['/api/opportunities/opp_shared/status', 'POST'], ['/api/import-runs/run_one', 'DELETE'],
     ];
     for (const [path, method] of unauthenticated) {
@@ -145,6 +145,8 @@ try {
     const { csrfToken } = await session.json();
     assert.match(csrfToken, /^[a-f0-9]{64}$/);
     assert.equal((await fetch(origin, { headers })).status, 200);
+    assert.equal((await fetch(`${origin}/api/volume-check`, { method: 'POST', headers: { ...headers, origin, 'content-type': 'application/json' }, body: '{}' })).status, 403, 'volume check retains session CSRF protection');
+    assert.equal((await fetch(`${origin}/api/volume-check`, { method: 'POST', headers: { ...headers, origin, 'x-csrf-token': csrfToken, 'content-type': 'application/json' }, body: JSON.stringify({ profileId: 'invalid' }) })).status, 400, 'invalid card cannot run a costly probe');
     assert.equal((await fetch(`${origin}/api/import-runs`, { headers })).status, 200);
     assert.equal((await fetch(`${origin}/api/opportunities`, { headers })).status, 200);
     const privateConfig = await (await fetch(`${origin}/api/config`, { headers })).json();
