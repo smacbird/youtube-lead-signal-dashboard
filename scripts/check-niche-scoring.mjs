@@ -146,9 +146,9 @@ assert.deepEqual(lineup.map((p) => [p.id, p.group, p.label]), EXPECTED_LINEUP, '
 assert.deepEqual(lineup.filter((p) => p.group === 'main').map((p) => p.id), EXPECTED_LINEUP.filter(([, g]) => g === 'main').map(([id]) => id), 'eight main cards');
 assert.deepEqual(lineup.filter((p) => p.group === 'explore').map((p) => p.id), ['ai_tools', 'biz_opp', 'work_from_home', 'side_hustles'], 'four explore cards');
 assert.ok(!NICHE_PROFILES.money_making, 'standalone money-making profile removed');
-// Bounded, non-empty query bundles (no keyword-dump blow-up of search quota).
+// Bounded, non-empty query bundles (traffic_leads deliberately stops at three).
 for (const profile of lineup) {
-  assert.ok(profile.queries.length >= 4 && profile.queries.length <= 6, `${profile.id} has 4–6 search queries, got ${profile.queries.length}`);
+  assert.ok(profile.queries.length >= (profile.id === 'traffic_leads' ? 3 : 4) && profile.queries.length <= 6, `${profile.id} has a bounded query bundle, got ${profile.queries.length}`);
   assert.ok(profile.queries.every((q) => typeof q === 'string' && q.trim().length > 6), `${profile.id} queries are real phrases`);
 }
 

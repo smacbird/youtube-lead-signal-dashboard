@@ -60,6 +60,16 @@ export function clicksNoSalesFit({ title = '', description = '' } = {}) {
   return 'off_topic';
 }
 
+// Traffic & Leads searches are for affiliate publishers growing traffic to
+// their own links/list, not agencies prospecting for clients. A description
+// footer with affiliate links cannot turn an unrelated title into a fit.
+export function trafficLeadsFit({ title = '' } = {}) {
+  const headline = normalizeTitle(title);
+  if (!/\baffiliate(?:s)?\b|\bpartner marketing\b/i.test(headline)) return false;
+  if (/\b(?:agenc(?:y|ies)|b2b|clients?|local businesses|small businesses|businesses without websites|n8n)\b/i.test(headline)) return false;
+  return /\b(?:traffic|leads?|lead generation|visitors?|audience|organic|seo|email list|list building|subscribers?|link clicks?)\b/i.test(headline);
+}
+
 /** How many distinct search candidates to request, capped to one videos.list batch. */
 export function candidateTarget(maxVideos, profileId) {
   const count = Math.max(1, Math.floor(Number(maxVideos) || 1));
@@ -102,14 +112,15 @@ export function titleProspectMatches(title = '') {
 export function rankCandidateVideos(candidates, statsById, { maxVideos, minComments = MIN_COMMENT_COUNT, profileId } = {}) {
   const limit = Math.max(1, Math.floor(Number(maxVideos) || 1));
   const focused = profileId === 'clicks_no_sales';
+  const affiliateTraffic = profileId === 'traffic_leads';
 
   if (!statsById) {
-    if (!focused) return {
+    if (!focused && !affiliateTraffic) return {
       selected: candidates.slice(0, limit).map((video) => ({ ...video, commentCount: null, rankScore: null, titleMatches: titleProspectMatches(video.title) })),
       dropped: candidates.slice(limit).map((video) => ({ id: video.id, title: video.title, reason: 'search_order_limit', commentCount: null })),
     };
-    // For this profile, no statistics means its comment floors cannot be
-    // verified. Return an honest empty shortlist instead of scanning blindly.
+    // Focused conversion and affiliate traffic profiles require verified
+    // comment floors. No metadata means no safe shortlist.
     return { selected: [], dropped: candidates.map((video) => ({ id: video.id, title: video.title, reason: 'statistics_unavailable', commentCount: null })) };
   }
   const dropped = [];
@@ -118,7 +129,7 @@ export function rankCandidateVideos(candidates, statsById, { maxVideos, minComme
     const stats = statsById.get(video.id);
     const title = stats?.title || video.title || '';
     const fit = focused ? clicksNoSalesFit({ title, description: stats?.description || video.description || '' }) : null;
-    if (fit === 'off_topic') {
+    if (fit === 'off_topic' || (affiliateTraffic && !trafficLeadsFit({ title }))) {
       dropped.push({ id: video.id, title, reason: 'off_topic', commentCount: null });
       return;
     }
@@ -162,6 +173,8 @@ export const VIDEOS_LIST_QUOTA_UNITS = 1;
 export async function selectNicheVideos({ youtubeClient, queries, maxVideos, publishedAfter, order = 'relevance', minComments = MIN_COMMENT_COUNT, profileId }) {
   if (profileId === 'clicks_no_sales') return selectFocusedVideos({ youtubeClient, queries, maxVideos, publishedAfter, order });
   const target = candidateTarget(maxVideos, profileId);
+  const affiliateTraffic = profileId === 'traffic_leads';
+  const searchQueries = affiliateTraffic ? queries.slice(0, 3) : queries;
   const candidates = [];
   const seen = new Set();
   const rejected = new Map();
@@ -179,9 +192,9 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
   // half the 20/10/50-candidate pool for the second angle. Thin pools can use
   // later queries, always within a 50-ID videos.list batch per lookup.
   const initialCap = queries.length > 1 ? Math.ceil(target / 2) : target;
-  for (let index = 0; index < queries.length && candidates.length < MAX_CANDIDATES; index++) {
+  for (let index = 0; index < searchQueries.length && candidates.length < MAX_CANDIDATES; index++) {
     if (index >= 2 && qualifiedCount >= maxVideos) break;
-    const query = queries[index];
+    const query = searchQueries[index];
     const cap = index < 2 ? Math.min(MAX_CANDIDATES, (index + 1) * initialCap) : MAX_CANDIDATES;
     if (candidates.length < cap) {
       try {
@@ -197,7 +210,7 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
             channelTitle: item?.snippet?.channelTitle || '',
             publishedAt: item?.snippet?.publishedAt || '', matchedQuery: query,
           };
-          if (!queryTopicFit({ ...video, query })) {
+          if (!(affiliateTraffic ? trafficLeadsFit(video) : queryTopicFit({ ...video, query }))) {
             if (!rejected.has(id)) rejected.set(id, { id, title: video.title, reason: 'off_topic', commentCount: null });
             continue;
           }
@@ -210,7 +223,7 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
         searchErrors.push({ query, code: error?.code || 'search_error', message: error?.message || 'YouTube search failed.' });
       }
     }
-    if (index === 0 && queries.length > 1) continue;
+    if (index === 0 && searchQueries.length > 1) continue;
     const missing = candidates.filter(({ id }) => !videoItemsById.has(id));
     if (missing.length && !metadataFailed) {
       try {
@@ -219,7 +232,7 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
         for (const item of response.items || []) videoItemsById.set(item.id, item);
       } catch (error) {
         metadataFailed = true;
-        searchErrors.push({ query: null, code: 'video_ranking_failed', message: `Could not load comment counts (${error?.message || 'videos.list failed'}); kept topical search order.` });
+        searchErrors.push({ query: null, code: 'video_ranking_failed', message: `Could not load comment counts (${error?.message || 'videos.list failed'}); ${affiliateTraffic ? 'cannot verify the 10-comment minimum, so no videos were selected' : 'kept topical search order'}.` });
       }
     }
     const stats = videoItemsById.size && !metadataFailed
@@ -227,7 +240,7 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
       : null;
     ({ selected, dropped } = rankCandidateVideos(candidates, stats, { maxVideos, minComments, profileId }));
     qualifiedCount = selected.length;
-    if (stats && !selected.length && candidates.length && (index === queries.length - 1 || candidates.length === MAX_CANDIDATES)) {
+    if (!affiliateTraffic && stats && !selected.length && candidates.length && (index === searchQueries.length - 1 || candidates.length === MAX_CANDIDATES)) {
       const fallback = dropped.filter((video) => (video.commentCount || 0) > 0).sort((a, b) => b.commentCount - a.commentCount).slice(0, maxVideos);
       const byId = new Map(candidates.map((video) => [video.id, video]));
       selected = fallback.map((video) => ({ ...byId.get(video.id), commentCount: video.commentCount, titleMatches: titleProspectMatches(video.title), rankScore: null }));
@@ -237,6 +250,7 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
     }
     if (metadataFailed) break;
   }
+  if (affiliateTraffic && !selected.length && !searchErrors.length) searchErrors.push({ query: null, code: candidates.length || rejected.size ? 'no_eligible_traffic_videos' : 'no_search_candidates', message: 'No affiliate traffic or lead-generation videos met the 10-comment minimum in this video-age window. No comments were read; try a wider video-age window or check back later.' });
   return {
     videos: selected,
     videoItems: videoItemsById.size && !metadataFailed ? selected.map((video) => videoItemsById.get(video.id)).filter(Boolean) : null,

@@ -19,7 +19,7 @@ export function presetForVideos(videos) {
 export function estimateScanQuota({ videos, comments, queryCount = 6, profileId } = {}) {
   const v = Math.max(1, Math.min(25, Math.floor(Number(videos) || 1)));
   const cap = Math.max(1, Math.min(300, Math.floor(Number(comments) || 1)));
-  const q = Math.max(1, Math.floor(Number(queryCount) || 1));
+  const q = Math.min(profileId === 'traffic_leads' ? 3 : Infinity, Math.max(1, Math.floor(Number(queryCount) || 1)));
   const target = profileId === 'clicks_no_sales' && v === 10 ? 50 : Math.min(50, v * 2);
   const broadCap = q > 3 ? Math.ceil(target * 0.6) : target;
   const broadPerQuery = Math.ceil(broadCap / Math.min(3, q));

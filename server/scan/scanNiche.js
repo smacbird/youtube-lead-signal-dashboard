@@ -9,9 +9,10 @@ import { selectNicheVideos } from '../youtube/videoRanking.js';
 // API failure. Preserve errors from failed search/metadata requests as HTTP 400.
 export function nicheScanResponseStatus(result) {
   if (result.run.status !== 'failed' || result.videosFound.length) return 200;
-  const expected = new Set(['no_search_candidates', 'no_eligible_affiliate_videos']);
-  return result.profileId === 'clicks_no_sales'
-    && result.searchErrors.length === 1 && expected.has(result.searchErrors[0].code) ? 200 : 400;
+  const expected = result.profileId === 'clicks_no_sales'
+    ? new Set(['no_search_candidates', 'no_eligible_affiliate_videos'])
+    : result.profileId === 'traffic_leads' ? new Set(['no_search_candidates', 'no_eligible_traffic_videos']) : new Set();
+  return result.searchErrors.length === 1 && expected.has(result.searchErrors[0].code) ? 200 : 400;
 }
 
 export function formatScanTitle({ profileLabel, daysBack, maxVideos, commentsFetched, startedAt }) {
@@ -62,7 +63,8 @@ export async function scanNiche({ body, store, youtubeClient }) {
   // No eligible videos after a healthy search is a completed zero-result scan.
   // The importer creates the run, but its empty-input error is not a user error.
   const expectedEmpty = !found.length && searchErrors.length === 1
-    && ['no_search_candidates', 'no_eligible_affiliate_videos'].includes(searchErrors[0].code);
+    && (profileId === 'clicks_no_sales' && ['no_search_candidates', 'no_eligible_affiliate_videos'].includes(searchErrors[0].code)
+      || profileId === 'traffic_leads' && ['no_search_candidates', 'no_eligible_traffic_videos'].includes(searchErrors[0].code));
   if (expectedEmpty) {
     run.status = 'succeeded';
     run.errors = run.errors.filter((error) => error.code !== 'no_valid_video_ids');

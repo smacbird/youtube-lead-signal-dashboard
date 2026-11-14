@@ -3,7 +3,7 @@
 //   main    – the eight primary affiliate-lead choices
 //   explore – four "Explore more" choices
 //
-// Queries are bounded YOUTUBE VIDEO SEARCH bundles (5–6 each) chosen to surface recent,
+// Queries are bounded YOUTUBE VIDEO SEARCH bundles (3–6 each) chosen to surface recent,
 // practical videos whose comment sections hold engaged, on-topic prospects WITHOUT
 // exploding search quota (each search costs 100 units). They are not keyword dumps:
 // a video-topic match only puts a comment in front of the scorer; high intent still has
@@ -34,12 +34,12 @@ export const NICHE_PROFILES = {
     leadCategory: 'lead generation / traffic acquisition',
     replyStyle: 'diagnostic and tactical: ask about offer, audience and channel, then suggest one measurable traffic or lead step',
     keywords: ['get leads', 'lead generation', 'leads', 'traffic', 'get clients', 'first leads', 'landing page', 'funnel traffic', 'website visitors', 'ads', 'free traffic', 'email list'],
+    // Three affiliate-audience angles only. Generic lead gen yields agency/B2B
+    // videos, not affiliate publishers asking for traffic to their own links.
     queries: [
-      'how to get leads online for beginners',
-      'how to get your first leads with no website',
-      'how to get traffic to affiliate offers',
-      'lead generation for beginners step by step',
-      'how to get traffic and leads without paid ads',
+      'affiliate marketing how to get traffic to affiliate links',
+      'affiliate marketing free traffic beginner content SEO',
+      'affiliate marketing get leads email list without paid ads',
     ],
   },
   affiliate_funnels: {

@@ -1,6 +1,6 @@
 // A read-only, deliberately bounded probe. No importer or persistence is involved.
 import { NICHE_PROFILES } from './nicheProfiles.js';
-import { clicksNoSalesFit, queryTopicFit } from './videoRanking.js';
+import { clicksNoSalesFit, queryTopicFit, trafficLeadsFit } from './videoRanking.js';
 import { scoreNicheLead } from '../scoring/nicheLead.js';
 import { leadBucket } from '../../src/scoring/leadBuckets.js';
 
@@ -48,7 +48,8 @@ export async function checkVolume({ profileId, daysBack = 30, youtubeClient }) {
     const item = byId.get(video.id);
     const title = item?.snippet?.title || video.title;
     const description = item?.snippet?.description || video.description;
-    const fit = profileId === 'clicks_no_sales' ? clicksNoSalesFit({ title, description }) !== 'off_topic' : queryTopicFit({ title, description, query });
+    const fit = profileId === 'clicks_no_sales' ? clicksNoSalesFit({ title, description }) !== 'off_topic'
+      : profileId === 'traffic_leads' ? trafficLeadsFit({ title }) : queryTopicFit({ title, description, query });
     return { id: video.id, title, fit, commentCount: count(item?.statistics?.commentCount) };
   }).filter((item) => item.fit);
   const engaged10 = topical.filter((v) => v.commentCount !== null && v.commentCount >= 10).length;

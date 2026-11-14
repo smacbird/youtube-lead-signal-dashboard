@@ -106,8 +106,8 @@ const thinClient = {
     return { items: ids.map((id) => ({ id, snippet: { title: id }, statistics: { commentCount: id.startsWith('third') ? '80' : '3' } })) };
   },
 };
-const recovered = await selectNicheVideos({ youtubeClient: thinClient, queries: ['first topic', 'second topic', 'third topic', 'fourth topic'], maxVideos: 10, profileId: 'traffic_leads' });
-assert.equal(thinCalls.search.length, 3, 'thin engagement triggers a third topical query');
+const recovered = await selectNicheVideos({ youtubeClient: thinClient, queries: ['first topic', 'second topic', 'third topic', 'fourth topic'], maxVideos: 10, profileId: 'affiliate_funnels' });
+assert.equal(thinCalls.search.length, 3, 'ordinary-profile thin engagement triggers a third topical query');
 assert.equal(thinCalls.videos.length, 2, 'thin pool requires a second cheap lookup');
 assert.ok(thinCalls.videos.every((ids) => ids.length <= 50));
 assert.equal(recovered.videos.length, 10);

@@ -10,7 +10,7 @@ export type ScanResult = { items: ScoredFixture[]; summary: ScanSummary; nicheSc
 
 // Query-bundle sizes mirror server/youtube/nicheProfiles.js so the quota estimate is honest.
 const QUERIES_PER_NICHE: Record<string, number> = {
-  clicks_no_sales: 6, traffic_leads: 5, affiliate_funnels: 5, email_follow_up: 5,
+  clicks_no_sales: 6, traffic_leads: 3, affiliate_funnels: 5, email_follow_up: 5,
   organic_traffic: 5, choosing_offers: 5, training_reviews: 5, affiliate_marketing: 6,
   ai_tools: 5, biz_opp: 5, work_from_home: 5, side_hustles: 5,
 };
@@ -62,6 +62,7 @@ export function ScanPanel({ niche, settings, options, onOptionsChange, onOpenOpt
       <p className="quota-note">
         About {quota.low}–{quota.high} of your {DAILY_QUOTA.toLocaleString()} daily YouTube units. Each search costs 100; reading comments is cheap (1 unit per page).
       </p>
+      {niche === 'traffic_leads' && <p className="workflow-note">Checks up to three affiliate-specific traffic and lead searches. If no videos meet the 10-comment minimum, it stops before reading comments rather than filling the scan with weak videos.</p>}
       {niche === 'clicks_no_sales' && <p className="workflow-note">Broad affiliate troubleshooting/funnel searches run first, then sales-pain searches if needed. About {quota.minSearches}–{quota.maxSearches} searches; a thin broad pool can need a second 1-unit video lookup. No scan can guarantee leads.{preset.videos === 10 ? ' Standard checks up to 50 candidate videos and selects at most 10.' : ''}</p>}
       <p className="options-summary">
         <button type="button" className="link-button" onClick={onOpenOptions} aria-controls="sidebar-panel-options">
