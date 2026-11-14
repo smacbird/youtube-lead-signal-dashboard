@@ -9,8 +9,10 @@ export function NichePicker({ value, enabled, onChange, daysBack }: { value: Nic
   const [busy, setBusy] = useState<NicheProfile | null>(null);
   const [results, setResults] = useState<Partial<Record<NicheProfile, VolumeResult>>>({});
   const [errors, setErrors] = useState<Partial<Record<NicheProfile, string>>>({});
+  const [openResults, setOpenResults] = useState<Partial<Record<NicheProfile, boolean>>>({});
   async function check(niche: NicheProfile) {
     setBusy(niche);
+    setOpenResults((previous) => ({ ...previous, [niche]: true }));
     setErrors((previous) => ({ ...previous, [niche]: '' }));
     try {
       const result = await apiJson('/api/volume-check', { method: 'POST', body: JSON.stringify({ profileId: niche, daysBack }) }) as VolumeResult;
@@ -38,16 +40,23 @@ export function NichePicker({ value, enabled, onChange, daysBack }: { value: Nic
                   <strong><span className="choice-indicator" aria-hidden="true">{value === niche.id ? '✓' : ''}</span>{niche.label}</strong>
                   <span className="choice-description">{niche.finds}</span>
                 </label>
-                <button type="button" className="link-button volume-button" disabled={busy !== null} onClick={() => check(niche.id)} aria-describedby={`volume-${niche.id}`}>{busy === niche.id ? 'Checking…' : 'Volume check · up to 103 units'}</button>
-                <div id={`volume-${niche.id}`} className="volume-result" role="status">
-                  {errors[niche.id] && <span>{errors[niche.id]}</span>}
-                  {results[niche.id] && !errors[niche.id] && (() => { const r = results[niche.id]!; return <>
-                    <strong>{r.topical} topically matched of {r.candidates} distinct videos · {r.engaged10} have 10+ comments · {r.engaged50} have 50+</strong>
-                    <span>About {r.commentSupply.toLocaleString()} public comments indicated by video counts; not a count of readable, recent top-level comments.</span>
-                    <span>Newest-page sample: {r.sampledComments} comments across {r.sampledVideos} videos · {r.helpRequests} possible help requests · {r.good} Good (Maybe) / {r.best} Best by current scoring.</span>
-                    <span>Query: “{r.query}”. {r.daysBack}-day video window; sampled comments have no age cutoff (Step 3 has its own comment-age filter). Lexical topical fit and sampled lead counts are directional proxies, not projected leads. Attempts: {r.calls.search} search × 100 + {r.calls.videos} video lookup + {r.calls.commentPages} newest-first comment page(s) × 1 = about {r.estimatedQuotaUnits} YouTube units. This check does not retry; YouTube's final billed amount may still differ. No comments saved.</span>
+                <button id={`volume-toggle-${niche.id}`} type="button" className="link-button volume-button" disabled={busy !== null} onClick={() => results[niche.id] ? setOpenResults((previous) => ({ ...previous, [niche.id]: true })) : check(niche.id)} aria-controls={`volume-results-${niche.id}`} aria-expanded={Boolean(openResults[niche.id])} aria-describedby={`volume-quota-${niche.id}`}>{busy === niche.id ? 'Checking…' : results[niche.id] ? 'View comment activity' : 'Check comment activity'}</button>
+                <small id={`volume-quota-${niche.id}`} className="volume-quota">{results[niche.id] ? 'Saved result. Viewing it uses no quota.' : 'Estimate: up to 103 YouTube units per check.'}</small>
+                <div id={`volume-results-${niche.id}`} className="volume-result" role="region" aria-label={`Comment activity for ${niche.label}`} hidden={!openResults[niche.id]}>
+                  {errors[niche.id] && <span role="status">{errors[niche.id]}{results[niche.id] ? ' Showing the previous result.' : ''}</span>}
+                  {results[niche.id] && (() => { const r = results[niche.id]!; return <>
+                    <strong role="status">{r.topical} topically matched of {r.candidates} distinct videos · {r.engaged10} have 10+ comments · {r.engaged50} have 50+</strong>
+                    <span>Sample: {r.sampledComments} comments from {r.sampledVideos} videos. {r.helpRequests} possible help requests; {r.good} Good, {r.best} Best by current scoring.</span>
+                    <span>Sample only, not a lead forecast. Estimated cost: {r.estimatedQuotaUnits} YouTube units. No leads saved.</span>
+                    <details className="volume-details"><summary>How this check works</summary>
+                      <span>Video counts indicate about {r.commentSupply.toLocaleString()} public comments, not how many recent comments are readable. Search: “{r.query}” over {r.daysBack} days of videos. The newest comment pages have no comment-age cutoff; Step 3 has its own filter.</span>
+                      <span>Topical matches use keyword rules. This small sample is not representative. Requests: {r.calls.search} search, {r.calls.videos} video lookup, {r.calls.commentPages} comment pages. No retries; final YouTube billing may differ.</span>
+                    </details>
                     {r.errors.map((error, index) => <span key={index}>Incomplete sample: {error.message}</span>)}
+                    <button type="button" className="link-button volume-button" disabled={busy !== null} onClick={() => check(niche.id)}>Check again</button>
+                    <small>Estimate: up to 103 YouTube units for another check.</small>
                   </>; })()}
+                  {(results[niche.id] || errors[niche.id]) && <button type="button" className="link-button volume-button" onClick={() => { setOpenResults((previous) => ({ ...previous, [niche.id]: false })); document.getElementById(`volume-toggle-${niche.id}`)?.focus(); }}>Close results</button>}
                 </div>
               </div>
             ))}
