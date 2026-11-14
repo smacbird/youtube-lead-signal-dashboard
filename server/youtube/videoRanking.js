@@ -17,6 +17,29 @@ const PROSPECT_TITLE_PATTERNS = [
   { pattern: /\bno\s+(experience|money|website)\b/i, label: 'no experience' },
 ];
 
+// Only Clicks but No Sales is a topical gate. Other profiles keep their existing
+// ranking. A video's description can establish affiliate context for a relevant
+// title, but a generic "affiliate links below" footer cannot turn music gear or
+// ecommerce product-page videos into conversion-pain prospects.
+const AFFILIATE_TITLE = /\baffiliate(?:s)?\b|\bpartner marketing\b/i;
+const AFFILIATE_DESCRIPTION = /\baffiliate marketing\b|\baffiliate (?:links?|offers?|commissions?|programs?)\b/i;
+const OFF_TOPIC_TITLE = /\b(?:music gear|music tools?|music production|audio plugins?|guitar pedals?|ecommerce|e-commerce|shopify|online stores?|product pages?)\b/i;
+const PAIN = /\b(?:clicks? (?:but|and) no (?:sales|conversions?)|traffic (?:but|and) no (?:sales|conversions?|commissions?)|(?:affiliate )?links? (?:not|aren't|isn't|won't) convert(?:ing)?|no (?:affiliate )?(?:sales|commissions?|conversions?)|zero (?:affiliate )?(?:sales|commissions?|conversions?)|not converting|no one (?:buys|is buying)|traffic.to.offer mismatch|conversion rate|why (?:am i getting |are there )?no sales)\b/i;
+
+export function clicksNoSalesFit({ title = '', description = '' } = {}) {
+  const affiliateTitle = AFFILIATE_TITLE.test(title);
+  if (OFF_TOPIC_TITLE.test(title) && !affiliateTitle) return 'off_topic';
+  // Affiliate context in a description counts only with a direct pain title;
+  // descriptions often carry unrelated boilerplate affiliate-link disclosures.
+  const titlePain = PAIN.test(title);
+  const context = affiliateTitle || (titlePain && AFFILIATE_DESCRIPTION.test(description));
+  if (!context) return 'off_topic';
+  // Generic beginner videos often mention conversion rates in boilerplate; only
+  // a concrete pain phrase in the description upgrades them to direct.
+  if (titlePain || (affiliateTitle && PAIN.test(description.replace(/\bconversion rate\b/gi, '')))) return 'direct';
+  return affiliateTitle ? 'adjacent' : 'off_topic';
+}
+
 /** How many search candidates to request for a scan of maxVideos videos. */
 export function candidateTarget(maxVideos) {
   return Math.min(MAX_CANDIDATES, Math.max(1, Math.floor(Number(maxVideos) || 1)) * 2);
@@ -30,20 +53,30 @@ export function titleProspectMatches(title = '') {
  * Rank candidates using videos.list statistics.
  * @param {Array<{id: string, title?: string}>} candidates in search order
  * @param {Map<string, {commentCount?: number|string|null, title?: string}>|null} statsById
- *   null means statistics are unavailable: keep the original search order.
- * @param {{ maxVideos: number, minComments?: number }} options
+ *   null means statistics are unavailable: other profiles keep search order; this profile needs verified counts.
+ * @param {{ maxVideos: number, minComments?: number, profileId?: string }} options
  * @returns {{ selected: Array, dropped: Array<{id: string, title: string, reason: string, commentCount: number|null}> }}
  */
-export function rankCandidateVideos(candidates, statsById, { maxVideos, minComments = MIN_COMMENT_COUNT } = {}) {
+export function rankCandidateVideos(candidates, statsById, { maxVideos, minComments = MIN_COMMENT_COUNT, profileId } = {}) {
   const limit = Math.max(1, Math.floor(Number(maxVideos) || 1));
+  const focused = profileId === 'clicks_no_sales';
+  if (focused) minComments = 5;
   if (!statsById) {
-    return { selected: candidates.slice(0, limit).map((video) => ({ ...video, commentCount: null, rankScore: null, titleMatches: titleProspectMatches(video.title) })), dropped: [] };
+    if (!focused) return { selected: candidates.slice(0, limit).map((video) => ({ ...video, commentCount: null, rankScore: null, titleMatches: titleProspectMatches(video.title) })), dropped: [] };
+    // For this profile, no statistics means the five-comment floor cannot be
+    // verified. Return an honest empty shortlist instead of scanning blindly.
+    return { selected: [], dropped: candidates.map((video) => ({ id: video.id, title: video.title, reason: 'statistics_unavailable', commentCount: null })) };
   }
   const dropped = [];
   const eligible = [];
   candidates.forEach((video, searchIndex) => {
     const stats = statsById.get(video.id);
     const title = stats?.title || video.title || '';
+    const fit = focused ? clicksNoSalesFit({ title, description: stats?.description || video.description || '' }) : null;
+    if (fit === 'off_topic') {
+      dropped.push({ id: video.id, title, reason: 'off_topic', commentCount: null });
+      return;
+    }
     if (!stats) {
       dropped.push({ id: video.id, title, reason: 'no_statistics', commentCount: null });
       return;
@@ -62,9 +95,9 @@ export function rankCandidateVideos(candidates, statsById, { maxVideos, minComme
     // log scale so a 50k-comment viral video doesn't swamp everything; title cues add a bounded bonus;
     // a small search-order tiebreak keeps relevance in play.
     const rankScore = Math.log10(commentCount + 1) * 10 + Math.min(2, titleMatches.length) * 6 - searchIndex * 0.1;
-    eligible.push({ ...video, commentCount, titleMatches, rankScore: Math.round(rankScore * 10) / 10 });
+    eligible.push({ ...video, ...(focused ? { fit } : {}), commentCount, titleMatches, rankScore: Math.round(rankScore * 10) / 10 });
   });
-  eligible.sort((a, b) => b.rankScore - a.rankScore);
+  eligible.sort((a, b) => (focused ? (a.fit === 'direct' ? 0 : 1) - (b.fit === 'direct' ? 0 : 1) : 0) || b.rankScore - a.rankScore);
   const selected = eligible.slice(0, limit);
   for (const video of eligible.slice(limit)) dropped.push({ id: video.id, title: video.title || '', reason: 'ranked_below_cutoff', commentCount: video.commentCount });
   return { selected, dropped };
@@ -76,9 +109,9 @@ export const VIDEOS_LIST_QUOTA_UNITS = 1;
 /**
  * Search for candidates (up to 2x maxVideos), fetch statistics in ONE videos.list call,
  * then keep the best maxVideos. Read-only: uses youtubeClient.searchVideos and listVideos.
- * If videos.list fails, keeps the original search order and records a searchErrors entry.
+ * If videos.list fails, other profiles keep search order; Clicks but No Sales skips unverified videos.
  */
-export async function selectNicheVideos({ youtubeClient, queries, maxVideos, publishedAfter, order = 'relevance', minComments = MIN_COMMENT_COUNT }) {
+export async function selectNicheVideos({ youtubeClient, queries, maxVideos, publishedAfter, order = 'relevance', minComments = MIN_COMMENT_COUNT, profileId }) {
   const target = candidateTarget(maxVideos);
   const perQuery = Math.min(25, Math.max(1, Math.ceil(target / Math.max(1, queries.length))));
   const candidates = [];
@@ -100,6 +133,7 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
           id,
           url: `https://www.youtube.com/watch?v=${id}`,
           title: item?.snippet?.title || 'YouTube video',
+          description: item?.snippet?.description || '',
           channelTitle: item?.snippet?.channelTitle || '',
           publishedAt: item?.snippet?.publishedAt || '',
           matchedQuery: query,
@@ -118,14 +152,14 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
       estimatedRankingQuotaUnits += VIDEOS_LIST_QUOTA_UNITS;
       const response = await youtubeClient.listVideos(candidates.map((video) => video.id));
       videoItemsById = new Map((response.items || []).map((item) => [item.id, item]));
-      statsById = new Map((response.items || []).map((item) => [item.id, { commentCount: item?.statistics?.commentCount, title: item?.snippet?.title }]));
+      statsById = new Map((response.items || []).map((item) => [item.id, { commentCount: item?.statistics?.commentCount, title: item?.snippet?.title, description: item?.snippet?.description }]));
     } catch (error) {
-      searchErrors.push({ query: null, code: 'video_ranking_failed', message: `Could not load comment counts (${error?.message || 'videos.list failed'}); kept search order.` });
+      searchErrors.push({ query: null, code: 'video_ranking_failed', message: `Could not load comment counts (${error?.message || 'videos.list failed'}); ${profileId === 'clicks_no_sales' ? 'this scan needs verified counts and will skip videos' : 'kept search order'}.` });
     }
   }
 
-  let { selected, dropped } = rankCandidateVideos(candidates, statsById, { maxVideos, minComments });
-  if (statsById && !selected.length && candidates.length) {
+  let { selected, dropped } = rankCandidateVideos(candidates, statsById, { maxVideos, minComments, profileId });
+  if (profileId !== 'clicks_no_sales' && statsById && !selected.length && candidates.length) {
     // Every candidate is under the comment threshold: scan the most-commented ones rather than nothing.
     const fallback = dropped.filter((video) => (video.commentCount || 0) > 0).sort((a, b) => b.commentCount - a.commentCount).slice(0, Math.max(1, Math.floor(Number(maxVideos) || 1)));
     const byId = new Map(candidates.map((video) => [video.id, video]));
@@ -133,6 +167,12 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
     const keep = new Set(selected.map((video) => video.id));
     dropped = dropped.filter((video) => !keep.has(video.id));
     if (selected.length) searchErrors.push({ query: null, code: 'few_commented_videos', message: `No candidate had ${minComments}+ comments; scanned the most-commented ones instead.` });
+  }
+
+  if (profileId === 'clicks_no_sales' && candidates.length && !selected.length) {
+    searchErrors.push(statsById
+      ? { query: null, code: 'no_eligible_affiliate_videos', message: 'No on-topic affiliate videos with at least 5 comments were found. Try a broader video-age choice (up to 90 days) or another niche.' }
+      : { query: null, code: 'ranking_metadata_unavailable', message: 'Could not verify video topics and comment counts, so no videos were scanned. Try again later.' });
   }
 
   return {

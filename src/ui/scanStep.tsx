@@ -3,7 +3,7 @@ import { apiJson } from './api';
 import { buildScanSummary, nichePhrase, normaliseImportedOpportunity } from './helpers';
 import { StatCard } from './layout';
 import { DAILY_QUOTA, SCAN_PRESETS, estimateScanQuota } from './scanPresets.js';
-import { nicheScanBody, presetFor, scanOptionsSummary, withPreset, type ScanOptions } from './scanOptions.js';
+import { nicheScanBody, presetFor, scanOptionsSummary, withDaysBack, withPreset, type ScanOptions } from './scanOptions.js';
 import type { AppSettings, NicheProfile, ScanSummary, ScoredFixture } from './types';
 
 export type ScanResult = { items: ScoredFixture[]; summary: ScanSummary; nicheScan: boolean; runId?: string };
@@ -68,6 +68,12 @@ export function ScanPanel({ niche, settings, options, onOptionsChange, onOpenOpt
         </button>
       </p>
 
+      {niche === 'clicks_no_sales' && options.daysBack < 90 && <p className="workflow-note">
+        Finding recent affiliate conversion-pain videos can be harder. Keep your {options.daysBack}-day choice, or{' '}
+        <button type="button" className="link-button" onClick={() => onOptionsChange(withDaysBack(options, 90))}>select the last 90 days</button>
+        {' '}before scanning. This does not change your saved default.
+      </p>}
+
       <div className="primary-action-row">
         <button type="button" className={hasResults ? 'big-button secondary' : 'big-button'} disabled={loading} onClick={scanByNiche} aria-describedby="scan-status">
           {loading ? 'Working…' : hasResults ? 'Run another scan' : `Find ${nichePhrase(niche)} leads`}
@@ -95,7 +101,7 @@ export function ScanResultCard({ summary, onShow }: { summary: ScanSummary; onSh
           <span className="eyebrow">{sourceText}</span>
           <h3 id="result-title">{summary.headline}</h3>
           {summary.startedAt && <small className="workflow-note">Scanned {new Date(summary.startedAt).toLocaleString()} (your local time).</small>}
-          {summary.candidatesConsidered != null && summary.videos !== null && <p className="workflow-note">{summary.videos} of {summary.candidatesConsidered} searched videos had enough comments to make the scan shortlist.</p>}
+          {summary.candidatesConsidered != null && summary.videos !== null && <p className="workflow-note">{summary.videos} of {summary.candidatesConsidered} searched videos met this scan’s video-selection rules.</p>}
           {!summary.startedAt && summary.title && <small className="workflow-note">{summary.title}</small>}
         </div>
       </div>

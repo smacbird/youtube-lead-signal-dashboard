@@ -6,6 +6,8 @@ let options = defaultScanOptions({ defaultScanDepth: 10, defaultFreshnessDays: 3
 assert.deepEqual(options, { presetId: 'standard', daysBack: 30, commentCap: 200, manualPages: 2 });
 assert.equal(defaultScanOptions({ defaultScanDepth: 99, defaultFreshnessDays: 45 }).presetId, 'quick', 'unknown depth falls back to Quick');
 assert.equal(defaultScanOptions({ defaultFreshnessDays: 45 }).daysBack, 30, 'unknown age falls back to 30 days');
+assert.equal(nicheScanBody(options, 'clicks_no_sales', 'Helpful').daysBack, 30, 'chosen 30 days stays 30; no silent profile override');
+assert.equal(nicheScanBody(withDaysBack(options, 90), 'clicks_no_sales', 'Helpful').daysBack, 90, '90 days requires explicit choice');
 
 // Sidebar "More options" changes are what the Step 2 button sends.
 options = withDaysBack(options, 14);

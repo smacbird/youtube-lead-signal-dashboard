@@ -29,7 +29,7 @@ export async function scanNiche({ body, store, youtubeClient }) {
     ? body.queries.map((value) => String(value).trim()).filter(Boolean).slice(0, 8)
     : profile.queries;
   const publishedAfter = daysAgoIso(daysBack);
-  const selection = await selectNicheVideos({ youtubeClient, queries, maxVideos, publishedAfter, order: body.order || 'relevance' });
+  const selection = await selectNicheVideos({ youtubeClient, queries, maxVideos, publishedAfter, order: body.order || 'relevance', profileId });
   const found = selection.videos;
   const { searchErrors, estimatedSearchQuotaUnits, estimatedRankingQuotaUnits } = selection;
 
