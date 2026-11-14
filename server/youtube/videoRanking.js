@@ -21,16 +21,20 @@ const PROSPECT_TITLE_PATTERNS = [
 // conversion stage, not traffic acquisition or general affiliate introductions.
 const AFFILIATE_TITLE = /\baffiliate(?:s)?\b|\bpartner marketing\b/i;
 const AFFILIATE_DESCRIPTION = /\baffiliate marketing\b|\baffiliate (?:links?|offers?|commissions?|programs?)\b/i;
-const OFF_TOPIC_TITLE = /\b(?:music gear|music tools?|music production|audio plugins?|guitar pedals?|ecommerce|e-commerce|shopify|online stores?|product pages?)\b/i;
+const MUSIC_TITLE = /\b(?:music gear|music tools?|music production|audio plugins?|guitar pedals?)\b/i;
+const OFF_TOPIC_TITLE = /\b(?:ecommerce|e-commerce|shopify|online stores?|product pages?)\b/i;
+const PAID_AD_TITLE = /\b(?:facebook ads?|google ads?|tiktok ads?|youtube ads?|meta ads?|paid ads?|paid traffic|ppc|adwords|retargeting)\b/i;
 const CLICKS_BUT_NO_SALES = /\bclicks? (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)\b/i;
 const TRAFFIC_BUT_NO_SALES = /\btraffic (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)\b/i;
 const ACQUISITION_STAGE = /\b(?:no|zero|not getting|can'?t get|cannot get) (?:affiliate |link |website |organic )*(?:clicks?|traffic)\b|\b(?:how to |ways to )?(?:get|getting|generate|drive|increase|boost) (?:more |your |affiliate |link |website |organic )*(?:clicks?|traffic)\b/i;
 const DIRECT_PAIN = /\b(?:clicks? (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)|traffic (?:but|and|yet) no (?:affiliate )?(?:sales|conversions?|commissions?)|(?:affiliate )?links? (?:not|aren't|isn't|won't) convert(?:ing)?|no (?:affiliate )?(?:sales|commissions?|conversions?)|zero (?:affiliate )?(?:sales|commissions?|conversions?)|not converting|no one (?:buys|is buying)|traffic.to.offer mismatch|why (?:am i getting |are there )?no sales)\b/i;
 const CONVERSION_TOPIC = /\b(?:affiliate )?(?:conversion rate|conversions?|sales funnel|offers? that convert|sales from (?:affiliate )?clicks?|increase (?:affiliate )?sales|improve (?:affiliate )?sales|convert (?:affiliate )?(?:clicks?|traffic|links?|offers?) (?:into|to) sales)\b/i;
+const BROAD_AFFILIATE_TOPIC = /\b(?:troubleshoot(?:ing)?|common mistakes?|mistakes? to avoid|not working|fix(?:ing)? (?:your |an? )?(?:affiliate |sales |conversion |offer|funnel)|funnel(?:s)?|opt[- ]?ins?|bridge pages?|landing pages?|offer(?:s)?|audience (?:match|fit)|tracking (?:sales|conversions?)|conversion strateg(?:y|ies)|traffic.to.sales)\b/i;
+const BROAD_EXCLUSIONS = /\b(?:beginner(?:s)? guide|affiliate marketing for beginners|how to start affiliate marketing|getting started with affiliate marketing)\b/i;
 
 export function clicksNoSalesFit({ title = '', description = '' } = {}) {
   const affiliateTitle = AFFILIATE_TITLE.test(title);
-  if (OFF_TOPIC_TITLE.test(title) && !affiliateTitle) return 'off_topic';
+  if (MUSIC_TITLE.test(title) || PAID_AD_TITLE.test(title) || (OFF_TOPIC_TITLE.test(title) && !affiliateTitle)) return 'off_topic';
   // An acquisition-stage title is excluded even if its description mentions
   // conversions, unless the title explicitly addresses clicks/traffic but no sales.
   if (ACQUISITION_STAGE.test(title) && !CLICKS_BUT_NO_SALES.test(title) && !TRAFFIC_BUT_NO_SALES.test(title)) return 'off_topic';
@@ -40,6 +44,7 @@ export function clicksNoSalesFit({ title = '', description = '' } = {}) {
   // A description can confirm a title's conversion topic, not rescue a generic
   // beginner or traffic title with unrelated tags or boilerplate.
   if (CONVERSION_TOPIC.test(title)) return 'adjacent';
+  if (BROAD_AFFILIATE_TOPIC.test(title) && !BROAD_EXCLUSIONS.test(title)) return 'broad';
   return 'off_topic';
 }
 
@@ -106,7 +111,8 @@ export function rankCandidateVideos(candidates, statsById, { maxVideos, minComme
     const rankScore = Math.log10(commentCount + 1) * 10 + Math.min(2, titleMatches.length) * 6 - searchIndex * 0.1;
     eligible.push({ ...video, ...(focused ? { fit } : {}), commentCount, titleMatches, rankScore: Math.round(rankScore * 10) / 10 });
   });
-  eligible.sort((a, b) => (focused ? (a.fit === 'direct' ? 0 : 1) - (b.fit === 'direct' ? 0 : 1) : 0) || b.rankScore - a.rankScore);
+  const tier = (video) => video.fit === 'direct' ? 0 : video.fit === 'adjacent' ? 1 : 2;
+  eligible.sort((a, b) => (focused ? tier(a) - tier(b) : 0) || b.rankScore - a.rankScore);
   const selected = eligible.slice(0, limit);
   for (const video of eligible.slice(limit)) dropped.push({ id: video.id, title: video.title || '', reason: 'ranked_below_cutoff', commentCount: video.commentCount });
   return { selected, dropped };
@@ -116,11 +122,13 @@ export const SEARCH_QUOTA_UNITS = 100;
 export const VIDEOS_LIST_QUOTA_UNITS = 1;
 
 /**
- * Search for candidates (2x maxVideos, or 50 for focused Standard), fetch statistics in ONE videos.list call,
+ * Other profiles keep their original bounded search and one videos.list lookup.
+ * Clicks but No Sales branches to its focused two-stage selector below.
  * then keep the best maxVideos. Read-only: uses youtubeClient.searchVideos and listVideos.
  * If videos.list fails, other profiles keep search order; Clicks but No Sales skips unverified videos.
  */
 export async function selectNicheVideos({ youtubeClient, queries, maxVideos, publishedAfter, order = 'relevance', minComments = MIN_COMMENT_COUNT, profileId }) {
+  if (profileId === 'clicks_no_sales') return selectFocusedVideos({ youtubeClient, queries, maxVideos, publishedAfter, order });
   const target = candidateTarget(maxVideos, profileId);
   const perQuery = Math.min(25, Math.max(1, Math.ceil(target / Math.max(1, queries.length))));
   const candidates = [];
@@ -168,7 +176,7 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
   }
 
   let { selected, dropped } = rankCandidateVideos(candidates, statsById, { maxVideos, minComments, profileId });
-  if (profileId !== 'clicks_no_sales' && statsById && !selected.length && candidates.length) {
+  if (statsById && !selected.length && candidates.length) {
     // Every candidate is under the comment threshold: scan the most-commented ones rather than nothing.
     const fallback = dropped.filter((video) => (video.commentCount || 0) > 0).sort((a, b) => b.commentCount - a.commentCount).slice(0, Math.max(1, Math.floor(Number(maxVideos) || 1)));
     const byId = new Map(candidates.map((video) => [video.id, video]));
@@ -176,14 +184,6 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
     const keep = new Set(selected.map((video) => video.id));
     dropped = dropped.filter((video) => !keep.has(video.id));
     if (selected.length) searchErrors.push({ query: null, code: 'few_commented_videos', message: `No candidate had ${minComments}+ comments; scanned the most-commented ones instead.` });
-  }
-
-  if (profileId === 'clicks_no_sales' && !selected.length) {
-    searchErrors.push(!candidates.length
-      ? { query: null, code: 'no_search_candidates', message: 'No videos were found in this video-age window. Try another niche or check back when new videos are available.' }
-      : statsById
-      ? { query: null, code: 'no_eligible_affiliate_videos', message: 'No conversion-stage affiliate videos met the comment minimum (3 for direct pain, 5 for adjacent). Try another niche or check back when new videos are available.' }
-      : { query: null, code: 'ranking_metadata_unavailable', message: 'Could not verify video topics and comment counts, so no videos were scanned. Try again later.' });
   }
 
   return {
@@ -197,4 +197,115 @@ export async function selectNicheVideos({ youtubeClient, queries, maxVideos, pub
     estimatedSearchQuotaUnits,
     estimatedRankingQuotaUnits,
   };
+}
+
+// Profile-only two-stage discovery. One metadata call when broad search snippets
+// are plainly sparse OR when verified broad videos already fill the shortlist;
+// a second, cheap videos.list is needed only when snippets looked promising but
+// their actual comment counts are too low. Never fetch comments during selection.
+async function selectFocusedVideos({ youtubeClient, queries, maxVideos, publishedAfter, order }) {
+  const target = candidateTarget(maxVideos, 'clicks_no_sales');
+  const primaryCount = Math.min(3, queries.length);
+  const broadQueries = queries.slice(0, primaryCount);
+  const fallbackQueries = queries.slice(primaryCount);
+  const broadCap = fallbackQueries.length ? Math.ceil(target * 0.6) : target;
+  const broadPerQuery = Math.min(25, Math.ceil(broadCap / Math.max(1, broadQueries.length)));
+  const desired = Math.max(1, Math.min(maxVideos, target));
+  const candidates = [];
+  const seen = new Set();
+  const searchErrors = [];
+  const videoItemsById = new Map();
+  let estimatedSearchQuotaUnits = 0;
+  let estimatedRankingQuotaUnits = 0;
+  let topicalCount = 0;
+  let metadataFailed = false;
+
+  async function search(query, maxResults, cap) {
+    if (maxResults <= 0) return;
+    try {
+      estimatedSearchQuotaUnits += SEARCH_QUOTA_UNITS;
+      const response = await youtubeClient.searchVideos({ query, publishedAfter, maxResults: Math.min(25, maxResults), order });
+      for (const item of response.items || []) {
+        const id = item?.id?.videoId;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const video = {
+          id,
+          url: `https://www.youtube.com/watch?v=${id}`,
+          title: item?.snippet?.title || 'YouTube video',
+          description: item?.snippet?.description || '',
+          channelTitle: item?.snippet?.channelTitle || '',
+          publishedAt: item?.snippet?.publishedAt || '',
+          matchedQuery: query,
+        };
+        candidates.push(video);
+        if (clicksNoSalesFit(video) !== 'off_topic') topicalCount += 1;
+        if (candidates.length >= cap) break;
+      }
+    } catch (error) {
+      searchErrors.push({ query, code: error?.code || 'search_error', message: error?.message || 'YouTube search failed.' });
+    }
+  }
+
+  async function lookup(ids) {
+    if (!ids.length) return true;
+    estimatedRankingQuotaUnits += VIDEOS_LIST_QUOTA_UNITS;
+    try {
+      const response = await youtubeClient.listVideos(ids);
+      for (const item of response.items || []) videoItemsById.set(item.id, item);
+      return true;
+    } catch (error) {
+      metadataFailed = true;
+      searchErrors.push({ query: null, code: 'video_ranking_failed', message: `Could not load comment counts (${error?.message || 'videos.list failed'}); this scan needs verified counts and will skip videos.` });
+      return false;
+    }
+  }
+
+  function rank() {
+    const stats = videoItemsById.size && !metadataFailed
+      ? new Map([...videoItemsById].map(([id, item]) => [id, { commentCount: item?.statistics?.commentCount, title: item?.snippet?.title, description: item?.snippet?.description }]))
+      : null;
+    return { ...rankCandidateVideos(candidates, stats, { maxVideos, profileId: 'clicks_no_sales' }), stats };
+  }
+
+  for (const query of broadQueries) {
+    if (candidates.length >= broadCap || topicalCount >= desired) break;
+    await search(query, Math.min(broadPerQuery, broadCap - candidates.length), broadCap);
+  }
+
+  // If search snippets look abundant, verify engagement before deciding to save
+  // the remaining expensive queries. Thin verified pools get the fallback queries.
+  if (topicalCount >= desired && candidates.length) {
+    if (!await lookup(candidates.map((video) => video.id))) return finish();
+    if (rank().selected.length >= desired) return finish();
+  }
+
+  for (const query of fallbackQueries) {
+    if (candidates.length >= target) break;
+    await search(query, target - candidates.length, target);
+  }
+  const unseen = candidates.filter((video) => !videoItemsById.has(video.id));
+  if (!metadataFailed) await lookup(unseen.map((video) => video.id));
+  return finish();
+
+  function finish() {
+    const { selected, dropped, stats } = rank();
+    if (!selected.length) {
+      searchErrors.push(!candidates.length
+        ? { query: null, code: 'no_search_candidates', message: 'No videos were found in this video-age window. Try another niche or check back when new videos are available.' }
+        : stats
+        ? { query: null, code: 'no_eligible_affiliate_videos', message: 'No affiliate conversion or troubleshooting videos met the comment minimum. Try another niche or check back when new videos are available.' }
+        : { query: null, code: 'ranking_metadata_unavailable', message: 'Could not verify video topics and comment counts, so no videos were scanned. Try again later.' });
+    }
+    return {
+      videos: selected,
+      videoItems: videoItemsById.size && !metadataFailed ? selected.map((video) => videoItemsById.get(video.id)).filter(Boolean) : null,
+      candidatesConsidered: candidates.length,
+      droppedVideos: dropped,
+      rankedByComments: Boolean(stats),
+      searchErrors,
+      estimatedSearchQuotaUnits,
+      estimatedRankingQuotaUnits,
+    };
+  }
 }

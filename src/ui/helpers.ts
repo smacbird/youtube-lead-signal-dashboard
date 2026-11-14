@@ -90,6 +90,7 @@ export const dimensionLabels: Record<string, string> = {
   nicheResourceAsk: 'Asks for a recommendation',
   nicheQuestion: 'Asks a question',
   nicheKeywordFit: 'Matches the niche',
+  nicheConversionPain: 'Personal conversion problem',
   noiseSignal: 'Not-a-fit signal',
 };
 

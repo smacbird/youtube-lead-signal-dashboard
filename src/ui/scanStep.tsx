@@ -62,7 +62,7 @@ export function ScanPanel({ niche, settings, options, onOptionsChange, onOpenOpt
       <p className="quota-note">
         About {quota.low}–{quota.high} of your {DAILY_QUOTA.toLocaleString()} daily YouTube units. Each search costs 100; reading comments is cheap (1 unit per page).
       </p>
-      {niche === 'clicks_no_sales' && preset.videos === 10 && <p className="workflow-note">Standard checks up to 50 candidate videos for conversion-stage topics; it still selects at most 10 to read comments.</p>}
+      {niche === 'clicks_no_sales' && <p className="workflow-note">Broad affiliate troubleshooting/funnel searches run first, then sales-pain searches if needed. About {quota.minSearches}–{quota.maxSearches} searches; a thin broad pool can need a second 1-unit video lookup. No scan can guarantee leads.{preset.videos === 10 ? ' Standard checks up to 50 candidate videos and selects at most 10.' : ''}</p>}
       <p className="options-summary">
         <button type="button" className="link-button" onClick={onOpenOptions} aria-controls="sidebar-panel-options">
           {scanOptionsSummary(options)} · change in More options

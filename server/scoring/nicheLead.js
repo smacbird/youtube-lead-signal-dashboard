@@ -19,6 +19,7 @@ export const LOW_FIT_REASONS = {
   remote_job_request: 'Wants a work-from-home job, not an affiliate or business opportunity',
   generic_question: 'Question with no niche, cost, start or legitimacy signal',
   off_topic: 'Off-topic: no question, need or niche signal',
+  no_conversion_pain: 'No personal affiliate sales or conversion problem stated',
 };
 
 // Positive signals. Each one counts once; weight is added to the lead score.
@@ -147,6 +148,32 @@ function differentBusiness(profileId, text) {
 // prospects. Scoped to employment language so "I want to start a home business" is unaffected.
 const REMOTE_JOB_REQUEST = /\b(are you hiring|is this (a |an )?(real )?job|i (just )?need a job|looking for (a |work[- ]from[- ]home )job|need a remote job|work[- ]from[- ]home job|remote job|any jobs\b|job opening|positions? available|hiring remote|send (you )?my (resume|cv)|hire me|apply for (this |a |the )?(job|position|role|opening)|how (do|can) i apply for)\b/;
 
+// Clicks but No Sales needs evidence from the COMMENT, not an affiliate video.
+// A personal marker plus a concrete conversion failure is required. Topic-only
+// questions, no-click acquisition, praise and promo cannot become leads here.
+const PERSONAL_EXPERIENCE = /\b(?:my|our)\b|\b(?:i|we)\s+(?:have|had|got|get|keep|kept|am|are|run|built|sent|drove|see|saw|spent)\b/;
+const PAST_ONLY = /\b(?:i once|used to|back in 20\d{2}|years? ago|before i fixed|then (?:i )?fixed)\b/i;
+const CURRENT_AGAIN = /\b(?:still|again|currently|right now|now getting)\b/i;
+const NO_CLICKS_OR_TRAFFIC = /\b(?:no|zero|not getting|can'?t get|cannot get)\s+(?:affiliate\s+|link\s+)?clicks?\b|\b(?:no|zero|not getting)\s+traffic\b/;
+const CONVERSION_PAIN_PATTERNS = [
+  /\b(?:clicks?|traffic)\b.{0,65}\b(?:no|zero|0)\s+(?:affiliate\s+)?(?:sales|commissions?|conversions?|buyers?|purchases?)\b/,
+  /\b(?:no|zero|0)\s+(?:affiliate\s+)?(?:sales|commissions?|conversions?|buyers?)\b.{0,65}\b(?:clicks?|traffic)\b/,
+  /\b(?:affiliate\s+)?links?\b.{0,85}\b(?:not converting|not convert|don'?t convert|doesn'?t convert|aren'?t converting)\b/,
+  /\b(?:affiliate\s+)?(?:funnel|opt[- ]?ins?|signups?|subscribers?|offer|landing page)\b.{0,90}\b(?:nobody|no one)\s+(?:buys|is buying|purchases|converts)\b/,
+  /\b(?:affiliate\s+)?(?:funnel|offer)\b.{0,90}\b(?:no|zero)\s+(?:sales|commissions?|buyers?)\b/,
+  /\b(?:clicks?|traffic)\b.{0,60}\b(?:low|poor|bad)\s+conversion(?:\s+rate)?\b/,
+  /\b(?:low|poor|bad)\s+conversion(?:\s+rate)?\b.{0,60}\b(?:clicks?|traffic)\b/,
+  /\b(?:clicks?|traffic)\b.{0,60}\bconversion(?:\s+rate)?\s+(?:is|are)\s+(?:low|poor|bad)\b/,
+  /\b(?:affiliate\s+)?(?:clicks?|traffic)\b.{0,60}\bconvert(?:s|ing)?\s+poorly\b/,
+  /\btraffic\b.{0,60}\b(?:nobody|no one)\s+(?:buys|converts)\b/,
+];
+
+function personalConversionPain(text) {
+  if (!PERSONAL_EXPERIENCE.test(text) || NO_CLICKS_OR_TRAFFIC.test(text)
+    || (PAST_ONLY.test(text) && !CURRENT_AGAIN.test(text))) return null;
+  return firstMatch(text, CONVERSION_PAIN_PATTERNS);
+}
+
 const QUESTION_START = /^(how|what|where|which|who|why|when|is|are|can|could|does|do|did|should|would|will|anyone|any)\b/;
 
 const SELF_PROMO_PATTERNS = [
@@ -233,6 +260,7 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
   const words = wordCount(lower);
   const withoutLinks = lower.replace(/https?:\/\/\S+|www\.\S+|\b[a-z0-9-]+\.(com|net|org|io|co|ly|me|biz|info)\S*/g, '').replace(/[^a-z0-9]+/g, '');
   const hasQuestion = lower.includes('?') || QUESTION_START.test(lower);
+  const conversionMatch = profileId === 'clicks_no_sales' ? personalConversionPain(lower) : null;
 
   const signals = [];
   for (const signal of POSITIVE_SIGNALS) {
@@ -262,6 +290,7 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
   const isJoke = anyMatch(lower, JOKE_PATTERNS);
 
   let positive = intentSum + nicheBoost + (hasQuestion ? 18 : 0);
+  if (conversionMatch) positive += 38;
   if (words >= 12) positive += 4;
   if (words < 3) positive -= 8;
 
@@ -276,10 +305,12 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
   // on the absence of any business/niche keyword rather than on intent strength.
   else if (remoteJobMatch && !nicheMatched.length) { lowFitReason = 'remote_job_request'; lowFitDetail = remoteJobMatch; }
   else if (isGreeting && !intentSum) lowFitReason = 'greeting_only';
-  else if (isPraise && !intentSum && !hasQuestion) lowFitReason = 'praise_only';
+  else if (isPraise && !intentSum && !hasQuestion && !conversionMatch) lowFitReason = 'praise_only';
   else if (words < 3 && !intentSum) lowFitReason = 'too_short';
+  else if (profileId === 'clicks_no_sales' && isJoke && !conversionMatch) { lowFitReason = 'off_topic'; lowFitDetail = 'joke'; }
+  else if (profileId === 'clicks_no_sales' && !conversionMatch) lowFitReason = 'no_conversion_pain';
   else {
-    const qualifies = (intentSum >= 24 && positive >= 24) || (intentSum >= 18 && positive >= 30)
+    const qualifies = Boolean(conversionMatch) || (intentSum >= 24 && positive >= 24) || (intentSum >= 18 && positive >= 30)
       || (hasQuestion && nicheMatched.length >= 1 && positive >= 26);
     if (!qualifies) {
       if (words < 4 && !hasQuestion) lowFitReason = 'too_short';
@@ -317,6 +348,7 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
   // Evidence and human-readable reason.
   const evidenceSnippets = [];
   for (const signal of signals) evidenceSnippets.push(snippetFrom(original, signal.match));
+  if (conversionMatch) evidenceSnippets.unshift(snippetFrom(original, conversionMatch));
   if (creatorVideoRequest) evidenceSnippets.push(snippetFrom(original, lower.match(CREATOR_VIDEO_REQUEST)?.[0] || 'video'));
   if (otherBusiness) evidenceSnippets.push(`Different business: ${otherBusiness}`);
   if (nicheMatched.length) evidenceSnippets.push(`Niche match: ${nicheMatched.slice(0, 4).join(', ')}`);
@@ -340,6 +372,7 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
     } else {
       headline = `Asks a ${profile.label.toLowerCase()} question`;
     }
+    if (conversionMatch) headline = `Personal conversion blocker: "${conversionMatch}"${parts.length ? `; ${parts.join('; ')}` : ''}`;
     summary = creatorVideoRequest ? 'Asks the creator for a video; useful as a content idea, not a direct reply lead.'
       : otherBusiness ? `About a different business (${otherBusiness}); ${headline.toLowerCase()}. Check fit before replying.`
       : `${headline}.`;
@@ -374,6 +407,12 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
     { dimension: 'spamComplianceRisk', score: riskScore, reason: riskLevel === 'high' ? 'High risk: likely spam or self-promotion.' : riskLevel === 'medium' ? 'Risk phrase present; use conservative wording.' : 'No major spam or compliance red flags detected.', evidence: riskMatches.slice(0, 4) },
   ];
 
+  if (profileId === 'clicks_no_sales') scoreDimensions.push({
+    dimension: 'nicheConversionPain', score: conversionMatch ? 80 : 0,
+    reason: conversionMatch ? 'Personal sales or conversion problem stated in the comment.' : 'No personal sales or conversion problem stated.',
+    evidence: conversionMatch ? [snippetFrom(original, conversionMatch)] : [],
+  });
+
   return {
     opportunityType,
     opportunityTypeLabel: NICHE_LEAD_TYPE_LABELS[opportunityType],
@@ -389,6 +428,6 @@ export function scoreNicheLead({ text = '', profileId, authorDisplayName = '', i
     scoreDimensions,
     nicheMatchedKeywords: nicheMatched,
     nicheScoreBoost: nicheBoost,
-    nicheSignals: signals.map((signal) => signal.key),
+    nicheSignals: [...signals.map((signal) => signal.key), ...(conversionMatch ? ['conversionPain'] : [])],
   };
 }

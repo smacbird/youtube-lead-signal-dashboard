@@ -160,6 +160,42 @@ try {
     assert.equal(await readFile(store.filePath, 'utf8'), beforeRead, 'opening saved run does not rewrite history');
   }
 
+  // Two-stage focused scan: an under-engaged broad pool triggers pain-specific
+  // fallbacks and one extra 1-unit lookup; quota and diagnostics reconcile.
+  {
+    const store = new JsonImportStore({ filePath: join(tempDir, 'two-stage-store.json') });
+    const calls = { searches: [], metadata: [], comments: 0 };
+    let n = 0;
+    const titleFor = (id) => Number(id.slice(-4)) <= 10 ? 'Affiliate marketing troubleshooting mistakes' : 'Affiliate links not converting: zero commissions';
+    const client = {
+      async searchVideos({ query, maxResults }) {
+        calls.searches.push({ query, maxResults });
+        return { items: Array.from({ length: maxResults }, () => { n += 1; const id = `ts${String(n).padStart(9, '0')}`; return { id: { videoId: id }, snippet: { title: titleFor(id) } }; }) };
+      },
+      async listVideos(ids) {
+        calls.metadata.push(ids.length);
+        return { items: ids.map((id) => ({ id, snippet: { title: titleFor(id) }, statistics: { commentCount: Number(id.slice(-4)) <= 10 ? '2' : '12' } })) };
+      },
+      async listCommentThreads({ videoId }) {
+        calls.comments += 1;
+        return { items: [{ id: `t-${videoId}`, snippet: { topLevelComment: { id: `c-${videoId}`, snippet: { textOriginal: 'Great video, thanks!', publishedAt: '2026-11-10T00:00:00Z' } } } }] };
+      },
+    };
+    const result = await scanNiche({ body: { profileId: 'clicks_no_sales', maxVideos: 10, maxCommentsPerRun: 200 }, store, youtubeClient: client });
+    assert.equal(calls.searches.length, 3, 'one broad + two pain-specific searches, not all six');
+    assert.ok(calls.searches.every(({ maxResults }) => maxResults <= 25));
+    assert.deepEqual(calls.metadata, [10, 40], 'second lookup only for new ids');
+    assert.equal(result.videosFound.length, 10);
+    assert.equal(result.run.estimatedQuotaUnits, 300 + 2 + calls.comments, 'quota = searches + two lookups + comment pages');
+    const diag = result.summary.candidateDiagnostics;
+    assert.equal(diag.considered, 50);
+    assert.equal(diag.selected + diag.dropped, diag.considered);
+    assert.deepEqual(diag.reasons.map(({ reason, count }) => [reason, count]), [['too_few_comments', 10], ['ranked_below_cutoff', 30]]);
+    assert.equal(result.summary.best, 0, 'praise on relevant videos is never a Best lead');
+    const saved = await store.listOpportunitiesForRun(result.run.id);
+    assert.deepEqual(saved.run.candidateDiagnostics, diag, 'saved two-stage run keeps diagnostics');
+  }
+
   // A no-qualified-video scan reports zero and its drop reason, not fabricated
   // zero counts or a generic importer error; no comment pages are requested.
   {

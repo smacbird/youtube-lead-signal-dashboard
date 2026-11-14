@@ -85,5 +85,33 @@ try {
   const scanned = await scanNiche({ body: { profileId: 'affiliate_marketing', queries: ['affiliate'], maxVideos: 1, maxCommentsPerRun: 2 }, store: scanStore, youtubeClient: client });
   assert.equal(scanned.items.length, 2, 'normal niche scan keeps both comments');
   assert.ok(scanned.items.every((item) => item.olspReview?.source));
+  // Clicks but No Sales: identical personal conversion comments score the same
+  // whether or not the source/comment mentions OLSP; the flag is review-only.
+  {
+    const focusedStore = new JsonImportStore({ filePath: join(tempDir, 'focused-olsp.json') });
+    const pain = 'I have 200 affiliate link clicks and zero sales. What should I fix first?';
+    const flaggedPain = 'I have 200 affiliate link clicks and zero sales from OLSP. What should I fix first?';
+    const focusedVideos = {
+      cleanvideo1: { id: 'cleanvideo1', snippet: { title: 'Affiliate clicks but no sales: what to fix', description: '', channelTitle: 'Research' }, statistics: { commentCount: '6' } },
+      olspvideo01: { id: 'olspvideo01', snippet: { title: 'Affiliate clicks but no sales: what to fix', description: 'Join at https://go.olsplink.com/start', channelTitle: 'Research' }, statistics: { commentCount: '6' } },
+    };
+    const focusedClient = {
+      async searchVideos() { return { items: Object.values(focusedVideos).map(({ id, snippet }) => ({ id: { videoId: id }, snippet })) }; },
+      async listVideos(ids) { return { items: ids.map((id) => focusedVideos[id]) }; },
+      async listCommentThreads({ videoId }) {
+        const text = videoId === 'olspvideo01' ? flaggedPain : pain;
+        return { items: [{ id: `t-${videoId}`, snippet: { topLevelComment: { id: `c-${videoId}`, snippet: { textOriginal: text, publishedAt: '2026-11-10T00:00:00Z' } } } }] };
+      },
+    };
+    const focused = await scanNiche({ body: { profileId: 'clicks_no_sales', queries: ['affiliate conversion'], maxVideos: 2, maxCommentsPerRun: 25 }, store: focusedStore, youtubeClient: focusedClient });
+    assert.equal(focused.items.length, 2, 'OLSP comment kept');
+    const clean = focused.items.find((item) => item.comment.textOriginal === pain);
+    const flagged = focused.items.find((item) => item.comment.textOriginal === flaggedPain);
+    assert.equal(clean.olspReview, null);
+    assert.ok(flagged.olspReview?.source && flagged.olspReview?.comment, 'source and comment flags kept');
+    for (const key of ['opportunityType', 'leadFit', 'overallScore', 'priority', 'riskLevel', 'recommendedAction'])
+      assert.deepEqual(flagged[key], clean[key], `OLSP does not change focused ${key}`);
+    assert.equal(flagged.leadFit, 'best');
+  }
   console.log('OLSP review checks passed: exact domains, lookalikes, source/comment evidence, unchanged scores/actions, imports, scans, legacy reload and CSV.');
 } finally { await rm(tempDir, { recursive: true, force: true }); }

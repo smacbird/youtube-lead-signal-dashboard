@@ -17,13 +17,15 @@ export const NICHE_PROFILES = {
     leadCategory: 'affiliate traffic that is not converting to sales',
     replyStyle: 'diagnostic: ask about the offer, audience match and tracking, then suggest one concrete conversion check; never promise income',
     keywords: ['clicks but no sales', 'no sales', 'no commissions', 'not converting', 'no conversions', 'zero sales', 'getting clicks', 'conversion rate', 'why no sales', 'traffic but no sales', 'affiliate clicks'],
+    // First three discover broader affiliate troubleshooting/funnel/offer videos;
+    // the last three are pain-specific fallbacks when the broad pool is thin.
     queries: [
+      'affiliate marketing troubleshooting sales not converting',
+      'affiliate sales funnel opt in offer strategy',
+      'affiliate offer audience traffic conversion strategy',
       'affiliate marketing clicks but no sales',
-      'why am I getting clicks but no conversions affiliate',
-      'getting traffic but no affiliate commissions',
-      'affiliate links not converting what to do',
-      'how to increase affiliate conversion rate for beginners',
-      'affiliate marketing no sales troubleshooting',
+      'affiliate traffic but no commissions',
+      'affiliate links not converting what to fix',
     ],
   },
   traffic_leads: {

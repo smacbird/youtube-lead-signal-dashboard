@@ -10,9 +10,9 @@ assert.equal(defaultScanOptions({ defaultFreshnessDays: 45 }).daysBack, 30, 'unk
 assert.equal(nicheScanBody(options, 'clicks_no_sales', 'Helpful').daysBack, 30, 'chosen 30 days stays 30; no silent profile override');
 assert.equal(nicheScanBody(withDaysBack(options, 90), 'clicks_no_sales', 'Helpful').daysBack, 90, '90 days requires explicit choice');
 const focusedQuota = estimateScanQuota({ videos: 10, comments: 200, queryCount: 6, profileId: 'clicks_no_sales' });
-assert.deepEqual({ low: focusedQuota.low, high: focusedQuota.high, minSearches: focusedQuota.minSearches, maxSearches: focusedQuota.maxSearches }, { low: 611, high: 631, minSearches: 6, maxSearches: 6 }, 'Standard focused quota estimate accounts for 50 candidates and one metadata call');
+assert.deepEqual({ low: focusedQuota.low, high: focusedQuota.high, minSearches: focusedQuota.minSearches, maxSearches: focusedQuota.maxSearches }, { low: 111, high: 632, minSearches: 1, maxSearches: 6 }, 'Standard focused quota estimate accounts for 50 candidates and one metadata call');
 assert.equal(estimateScanQuota({ videos: 10, comments: 200, queryCount: 6, profileId: 'work_from_home' }).low, 511, 'other Standard profile retains 20-candidate estimate');
-assert.equal(estimateScanQuota({ videos: 5, comments: 100, queryCount: 6, profileId: 'clicks_no_sales' }).minSearches, 5, 'focused Quick remains lean');
+assert.equal(estimateScanQuota({ videos: 5, comments: 100, queryCount: 6, profileId: 'clicks_no_sales' }).minSearches, 3, 'focused Quick can stop after three broad searches while retaining its 10-candidate cap');
 
 // Sidebar "More options" changes are what the Step 2 button sends.
 options = withDaysBack(options, 14);
